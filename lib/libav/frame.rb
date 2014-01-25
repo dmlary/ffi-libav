@@ -16,18 +16,15 @@ class Libav::Frame::Video
 
     # Create our frame and alloc space for the frame data
     @av_frame = AVFrame.new
-    av_picture = AVPicture.new @av_frame.pointer
-    avpicture_alloc(av_picture, pixel_format, width, height)
-    pp :alloc => av_picture
-    pp :picture => av_picture.to_hash
-    pp :data => av_picture[:data].to_a
 
-    # Set up our finalizer which calls av_free() on the av_frame.
-    ObjectSpace.define_finalizer(self, self.class.finalize(av_picture))
+    # XXX This memory needs to be allocated only for a frame that we manage
+    # av_picture = AVPicture.new @av_frame.pointer
+    # avpicture_alloc(av_picture, pixel_format, width, height)
+    # ObjectSpace.define_finalizer(self, self.class.finalize(av_picture))
   end
 
   def self.finalize(picture)
-    proc { pp :xfree => picture; FFI::Libav.avpicture_free(picture) }
+    proc { pp :xfree => picture; FFI::Libav.avpicture_free(picture); pp :done }
   end
 
   # Throw together a bunch of helper methods for accessing the AVFrame

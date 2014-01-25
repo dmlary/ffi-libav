@@ -278,6 +278,7 @@ module FFI::Libav
   class AVCodec < FFI::Struct; end
   class AVFrame < FFI::Struct; end
   class RcOverride < FFI::Struct; end
+  class AVPaletteControl < FFI::Struct; end
   class AVHWAccel < FFI::Struct; end
   class AVPicture < FFI::Struct; end
   class AVSubtitle < FFI::Struct; end
@@ -285,6 +286,12 @@ module FFI::Libav
   class AVCodecParserContext < FFI::Struct; end
   class AVBitStreamFilter < FFI::Struct; end
   class AVBitStreamFilterContext < FFI::Struct; end
+  LIBAVCODEC_VERSION_MAJOR = 53
+  LIBAVCODEC_VERSION_MINOR = 35
+  LIBAVCODEC_VERSION_MICRO = 0
+  LIBAVCODEC_VERSION_INT = (53 << 16|35 << 8|0)
+  LIBAVCODEC_BUILD = (53 << 16|35 << 8|0)
+  LIBAVCODEC_IDENT = 'Lavc53.35.0'
   CODEC_ID_NONE = 0
   CODEC_ID_MPEG1VIDEO = CODEC_ID_NONE + 1
   CODEC_ID_MPEG2VIDEO = CODEC_ID_MPEG1VIDEO + 1
@@ -385,7 +392,8 @@ module FFI::Libav
   CODEC_ID_TIERTEXSEQVIDEO = CODEC_ID_DSICINVIDEO + 1
   CODEC_ID_TIFF = CODEC_ID_TIERTEXSEQVIDEO + 1
   CODEC_ID_GIF = CODEC_ID_TIFF + 1
-  CODEC_ID_DXA = CODEC_ID_GIF + 1
+  CODEC_ID_FFH264 = CODEC_ID_GIF + 1
+  CODEC_ID_DXA = CODEC_ID_FFH264 + 1
   CODEC_ID_DNXHD = CODEC_ID_DXA + 1
   CODEC_ID_THP = CODEC_ID_DNXHD + 1
   CODEC_ID_SGI = CODEC_ID_THP + 1
@@ -402,7 +410,9 @@ module FFI::Libav
   CODEC_ID_INDEO5 = CODEC_ID_INDEO4 + 1
   CODEC_ID_MIMIC = CODEC_ID_INDEO5 + 1
   CODEC_ID_RL2 = CODEC_ID_MIMIC + 1
-  CODEC_ID_ESCAPE124 = CODEC_ID_RL2 + 1
+  CODEC_ID_8SVX_EXP = CODEC_ID_RL2 + 1
+  CODEC_ID_8SVX_FIB = CODEC_ID_8SVX_EXP + 1
+  CODEC_ID_ESCAPE124 = CODEC_ID_8SVX_FIB + 1
   CODEC_ID_DIRAC = CODEC_ID_ESCAPE124 + 1
   CODEC_ID_BFI = CODEC_ID_DIRAC + 1
   CODEC_ID_CMV = CODEC_ID_BFI + 1
@@ -440,7 +450,9 @@ module FFI::Libav
   CODEC_ID_DFA = CODEC_ID_JV + 1
   CODEC_ID_WMV3IMAGE = CODEC_ID_DFA + 1
   CODEC_ID_VC1IMAGE = CODEC_ID_WMV3IMAGE + 1
-  CODEC_ID_UTVIDEO = CODEC_ID_VC1IMAGE + 1
+  CODEC_ID_G723_1 = CODEC_ID_VC1IMAGE + 1
+  CODEC_ID_G729 = CODEC_ID_G723_1 + 1
+  CODEC_ID_UTVIDEO = CODEC_ID_G729 + 1
   CODEC_ID_BMV_VIDEO = CODEC_ID_UTVIDEO + 1
   CODEC_ID_VBLE = CODEC_ID_BMV_VIDEO + 1
   CODEC_ID_DXTORY = CODEC_ID_VBLE + 1
@@ -523,7 +535,9 @@ module FFI::Libav
   CODEC_ID_MACE3 = CODEC_ID_WMAV2 + 1
   CODEC_ID_MACE6 = CODEC_ID_MACE3 + 1
   CODEC_ID_VMDAUDIO = CODEC_ID_MACE6 + 1
-  CODEC_ID_FLAC = CODEC_ID_VMDAUDIO + 1
+  CODEC_ID_SONIC = CODEC_ID_VMDAUDIO + 1
+  CODEC_ID_SONIC_LS = CODEC_ID_SONIC + 1
+  CODEC_ID_FLAC = CODEC_ID_SONIC_LS + 1
   CODEC_ID_MP3ADU = CODEC_ID_FLAC + 1
   CODEC_ID_MP3ON4 = CODEC_ID_MP3ADU + 1
   CODEC_ID_SHORTEN = CODEC_ID_MP3ON4 + 1
@@ -682,6 +696,7 @@ module FFI::Libav
     :tiertexseqvideo,
     :tiff,
     :gif,
+    :ffh264,
     :dxa,
     :dnxhd,
     :thp,
@@ -699,6 +714,8 @@ module FFI::Libav
     :indeo5,
     :mimic,
     :rl2,
+    :'8svx_exp',
+    :'8svx_fib',
     :escape124,
     :dirac,
     :bfi,
@@ -737,6 +754,8 @@ module FFI::Libav
     :dfa,
     :wmv3image,
     :vc1image,
+    :g723_1,
+    :g729,
     :utvideo,
     :bmv_video,
     :vble,
@@ -820,6 +839,8 @@ module FFI::Libav
     :mace3,
     :mace6,
     :vmdaudio,
+    :sonic,
+    :sonic_ls,
     :flac,
     :mp3adu,
     :mp3on4,
@@ -880,6 +901,7 @@ module FFI::Libav
     :ffmetadata, 0x21000,
   ]
 
+  AVCODEC_MAX_AUDIO_FRAME_SIZE = 192000
   FF_INPUT_BUFFER_PADDING_SIZE = 8
   FF_MIN_BUFFER_SIZE = 16384
   ME_ZERO = 1
@@ -1001,6 +1023,21 @@ module FFI::Libav
     :nb,
   ]
 
+  AV_LPC_TYPE_DEFAULT = -1
+  AV_LPC_TYPE_NONE = 0
+  AV_LPC_TYPE_FIXED = 1
+  AV_LPC_TYPE_LEVINSON = 2
+  AV_LPC_TYPE_CHOLESKY = 3
+  AV_LPC_TYPE_NB = AV_LPC_TYPE_CHOLESKY + 1
+  AVLPCType = enum :AVLPCType, [
+    :default, -1,
+    :none, 0,
+    :fixed, 1,
+    :levinson, 2,
+    :cholesky, 3,
+    :nb,
+  ]
+
   AV_AUDIO_SERVICE_TYPE_MAIN = 0
   AV_AUDIO_SERVICE_TYPE_EFFECTS = 1
   AV_AUDIO_SERVICE_TYPE_VISUALLY_IMPAIRED = 2
@@ -1062,8 +1099,33 @@ module FFI::Libav
   CODEC_FLAG2_LOCAL_HEADER = 0x00000008
   CODEC_FLAG2_SKIP_RD = 0x00004000
   CODEC_FLAG2_CHUNKS = 0x00008000
+  CODEC_FLAG_OBMC = 0x00000001
+  CODEC_FLAG_H263P_AIV = 0x00000008
+  CODEC_FLAG_PART = 0x0080
+  CODEC_FLAG_ALT_SCAN = 0x00100000
+  CODEC_FLAG_H263P_UMV = 0x02000000
+  CODEC_FLAG_H263P_SLICE_STRUCT = 0x10000000
+  CODEC_FLAG_SVCD_SCAN_OFFSET = 0x40000000
+  CODEC_FLAG2_INTRA_VLC = 0x00000800
+  CODEC_FLAG2_DROP_FRAME_TIMECODE = 0x00002000
+  CODEC_FLAG2_NON_LINEAR_QUANT = 0x00010000
+  CODEC_FLAG_EXTERN_HUFF = 0x1000
+  CODEC_FLAG2_BPYRAMID = 0x00000010
+  CODEC_FLAG2_WPRED = 0x00000020
+  CODEC_FLAG2_MIXED_REFS = 0x00000040
+  CODEC_FLAG2_8X8DCT = 0x00000080
+  CODEC_FLAG2_FASTPSKIP = 0x00000100
+  CODEC_FLAG2_AUD = 0x00000200
+  CODEC_FLAG2_BRDO = 0x00000400
+  CODEC_FLAG2_MBTREE = 0x00040000
+  CODEC_FLAG2_PSY = 0x00080000
+  CODEC_FLAG2_SSIM = 0x00100000
+  CODEC_FLAG2_INTRA_REFRESH = 0x00200000
+  CODEC_FLAG2_MEMC_ONLY = 0x00001000
+  CODEC_FLAG2_BIT_RESERVOIR = 0x00020000
   CODEC_CAP_DRAW_HORIZ_BAND = 0x0001
   CODEC_CAP_DR1 = 0x0002
+  CODEC_CAP_PARSE_ONLY = 0x0004
   CODEC_CAP_TRUNCATED = 0x0008
   CODEC_CAP_HWACCEL = 0x0010
   CODEC_CAP_DELAY = 0x0020
@@ -1173,18 +1235,19 @@ module FFI::Libav
     :dimensions, 0x0008,
   ]
 
-  AV_NUM_DATA_POINTERS = 8
+  AV_NUM_DATA_POINTERS = 4
   class AVFrame < FFI::Struct
     layout(
-           :data, [:pointer, 8],
-           :linesize, [:int, 8],
-           :base, [:pointer, 8],
+           :data, [:pointer, 4],
+           :linesize, [:int, 4],
+           :base, [:pointer, 4],
            :key_frame, :int,
            :pict_type, AVPictureType,
            :pts, :int64,
            :coded_picture_number, :int,
            :display_picture_number, :int,
            :quality, :int,
+           :age, :int,
            :reference, :int,
            :qscale_table, :pointer,
            :qstride, :int,
@@ -1193,7 +1256,7 @@ module FFI::Libav
            :mb_type, :pointer,
            :motion_subsample_log2, :uint8,
            :opaque, :pointer,
-           :error, [:uint64, 8],
+           :error, [:uint64, 4],
            :type, :int,
            :repeat_pict, :int,
            :qscale_type, :int,
@@ -1256,6 +1319,11 @@ module FFI::Libav
   FF_COMPLIANCE_NORMAL = 0
   FF_COMPLIANCE_UNOFFICIAL = -1
   FF_COMPLIANCE_EXPERIMENTAL = -2
+  FF_ER_CAREFUL = 1
+  FF_ER_COMPLIANT = 2
+  FF_ER_AGGRESSIVE = 3
+  FF_ER_VERY_AGGRESSIVE = 4
+  FF_ER_EXPLODE = 5
   FF_DCT_AUTO = 0
   FF_DCT_FASTINT = 1
   FF_DCT_INT = 2
@@ -1348,6 +1416,10 @@ module FFI::Libav
   FF_MB_DECISION_SIMPLE = 0
   FF_MB_DECISION_BITS = 1
   FF_MB_DECISION_RD = 2
+  FF_AA_AUTO = 0
+  FF_AA_FASTINT = 1
+  FF_AA_INT = 2
+  FF_AA_FLOAT = 3
   FF_PROFILE_UNKNOWN = -99
   FF_PROFILE_RESERVED = -100
   FF_PROFILE_AAC_MAIN = 0
@@ -1401,6 +1473,11 @@ module FFI::Libav
   FF_PROFILE_MPEG4_SIMPLE_STUDIO = 14
   FF_PROFILE_MPEG4_ADVANCED_SIMPLE = 15
   FF_LEVEL_UNKNOWN = -99
+  X264_PART_I4X4 = 0x001
+  X264_PART_I8X8 = 0x002
+  X264_PART_P8X8 = 0x010
+  X264_PART_P4X4 = 0x020
+  X264_PART_B8X8 = 0x100
   FF_COMPRESSION_DEFAULT = -1
   FF_THREAD_FRAME = 1
   FF_THREAD_SLICE = 2
@@ -1462,10 +1539,12 @@ module FFI::Libav
            :chroma_elim_threshold, :int,
            :strict_std_compliance, :int,
            :b_quant_offset, :float,
+           :error_recognition, :int,
            :get_buffer, callback([ AVCodecContext.ptr, AVFrame.ptr ], :int),
            :release_buffer, callback([ AVCodecContext.ptr, AVFrame.ptr ], :void),
            :has_b_frames, :int,
            :block_align, :int,
+           :parse_only, :int,
            :mpeg_quant, :int,
            :stats_out, :pointer,
            :stats_in, :pointer,
@@ -1499,7 +1578,7 @@ module FFI::Libav
            :coded_frame, AVFrame.ptr,
            :debug, :int,
            :debug_mv, :int,
-           :error, [:uint64, 8],
+           :error, [:uint64, 4],
            :me_cmp, :int,
            :me_sub_cmp, :int,
            :mb_cmp, :int,
@@ -1516,6 +1595,8 @@ module FFI::Libav
            :intra_quant_bias, :int,
            :inter_quant_bias, :int,
            :color_table_id, :int,
+           :internal_buffer_count, :int,
+           :internal_buffer, :pointer,
            :global_quality, :int,
            :coder_type, :int,
            :context_model, :int,
@@ -1528,12 +1609,14 @@ module FFI::Libav
            :scenechange_threshold, :int,
            :lmin, :int,
            :lmax, :int,
+           :palctrl, AVPaletteControl.ptr,
            :noise_reduction, :int,
            :reget_buffer, callback([ AVCodecContext.ptr, AVFrame.ptr ], :int),
            :rc_initial_buffer_occupancy, :int,
            :inter_threshold, :int,
            :flags2, :int,
            :error_rate, :int,
+           :antialias_algo, :int,
            :quantizer_noise_shaping, :int,
            :thread_count, :int,
            :execute, callback([ AVCodecContext.ptr, callback([ AVCodecContext.ptr, :pointer ], :int), :pointer, :pointer, :int, :int ], :int),
@@ -1562,10 +1645,18 @@ module FFI::Libav
            :skip_frame, AVDiscard,
            :bidir_refine, :int,
            :brd_scale, :int,
+           :crf, :float,
+           :cqp, :int,
            :keyint_min, :int,
            :refs, :int,
            :chromaoffset, :int,
+           :bframebias, :int,
            :trellis, :int,
+           :complexityblur, :float,
+           :deblockalpha, :int,
+           :deblockbeta, :int,
+           :partitions, :int,
+           :directpred, :int,
            :cutoff, :int,
            :scenechange_factor, :int,
            :mv0_threshold, :int,
@@ -1573,7 +1664,13 @@ module FFI::Libav
            :compression_level, :int,
            :min_prediction_order, :int,
            :max_prediction_order, :int,
+           :lpc_coeff_precision, :int,
+           :prediction_order_method, :int,
+           :min_partition_order, :int,
+           :max_partition_order, :int,
            :timecode_frame_start, :int64,
+           :request_channels, :int,
+           :drc_scale, :float,
            :reordered_opaque, :int64,
            :bits_per_raw_sample, :int,
            :channel_layout, :uint64,
@@ -1589,11 +1686,21 @@ module FFI::Libav
            :color_range, AVColorRange,
            :chroma_sample_location, AVChromaLocation,
            :execute2, callback([ AVCodecContext.ptr, callback([ AVCodecContext.ptr, :pointer, :int, :int ], :int), :pointer, :pointer, :int ], :int),
+           :weighted_p_pred, :int,
+           :aq_mode, :int,
+           :aq_strength, :float,
+           :psy_rd, :float,
+           :psy_trellis, :float,
+           :rc_lookahead, :int,
+           :crf_max, :float,
            :log_level_offset, :int,
+           :lpc_type, AVLPCType,
+           :lpc_passes, :int,
            :slices, :int,
            :subtitle_header, :pointer,
            :subtitle_header_size, :int,
            :pkt, AVPacket.ptr,
+           :is_copy, :int,
            :thread_type, :int,
            :active_thread_type, :int,
            :thread_safe_callbacks, :int,
@@ -1849,12 +1956,18 @@ module FFI::Libav
   end
   class AVPicture < FFI::Struct
     layout(
-           :data, [:pointer, 8],
-           :linesize, [:int, 8]
+           :data, [:pointer, 4],
+           :linesize, [:int, 4]
     )
   end
   AVPALETTE_SIZE = 1024
   AVPALETTE_COUNT = 256
+  class AVPaletteControl < FFI::Struct
+    layout(
+           :palette_changed, :int,
+           :palette, [:uint, 256]
+    )
+  end
   SUBTITLE_NONE = 0
   SUBTITLE_BITMAP = SUBTITLE_NONE + 1
   SUBTITLE_TEXT = SUBTITLE_BITMAP + 1
@@ -1927,6 +2040,7 @@ module FFI::Libav
   attach_function :avpicture_layout, :avpicture_layout, [ :pointer, PixelFormat, :int, :int, :pointer, :int ], :int
   attach_function :avpicture_get_size, :avpicture_get_size, [ PixelFormat, :int, :int ], :int
   attach_function :avcodec_get_chroma_sub_sample, :avcodec_get_chroma_sub_sample, [ PixelFormat, :pointer, :pointer ], :void
+  attach_function :avcodec_get_pix_fmt_name, :avcodec_get_pix_fmt_name, [ PixelFormat ], :string
   attach_function :avcodec_set_dimensions, :avcodec_set_dimensions, [ AVCodecContext.ptr, :int, :int ], :void
   attach_function :avcodec_pix_fmt_to_codec_tag, :avcodec_pix_fmt_to_codec_tag, [ PixelFormat ], :uint
   attach_function :av_get_codec_tag_string, :av_get_codec_tag_string, [ :string, :uint, :uint ], :uint
@@ -1938,11 +2052,15 @@ module FFI::Libav
   FF_LOSS_CHROMA = 0x0020
   attach_function :avcodec_get_pix_fmt_loss, :avcodec_get_pix_fmt_loss, [ PixelFormat, PixelFormat, :int ], :int
   attach_function :avcodec_find_best_pix_fmt, :avcodec_find_best_pix_fmt, [ :int64, PixelFormat, :int, :pointer ], PixelFormat
+  FF_ALPHA_TRANSP = 0x0001
+  FF_ALPHA_SEMI_TRANSP = 0x0002
+  attach_function :img_get_alpha_info, :img_get_alpha_info, [ :pointer, PixelFormat, :int, :int ], :int
   attach_function :avpicture_deinterlace, :avpicture_deinterlace, [ AVPicture.ptr, :pointer, PixelFormat, :int, :int ], :int
   attach_function :av_codec_next, :av_codec_next, [ AVCodec.ptr ], AVCodec.ptr
   attach_function :avcodec_version, :avcodec_version, [  ], :uint
   attach_function :avcodec_configuration, :avcodec_configuration, [  ], :string
   attach_function :avcodec_license, :avcodec_license, [  ], :string
+  attach_function :avcodec_init, :avcodec_init, [  ], :void
   attach_function :avcodec_register, :avcodec_register, [ AVCodec.ptr ], :void
   attach_function :avcodec_find_encoder, :avcodec_find_encoder, [ CodecID ], AVCodec.ptr
   attach_function :avcodec_find_encoder_by_name, :avcodec_find_encoder_by_name, [ :string ], AVCodec.ptr
@@ -1950,7 +2068,11 @@ module FFI::Libav
   attach_function :avcodec_find_decoder_by_name, :avcodec_find_decoder_by_name, [ :string ], AVCodec.ptr
   attach_function :avcodec_string, :avcodec_string, [ :string, :int, AVCodecContext.ptr, :int ], :void
   attach_function :av_get_profile_name, :av_get_profile_name, [ :pointer, :int ], :string
+  attach_function :avcodec_get_context_defaults, :avcodec_get_context_defaults, [ AVCodecContext.ptr ], :void
+  attach_function :avcodec_get_context_defaults2, :avcodec_get_context_defaults2, [ AVCodecContext.ptr, AVMediaType ], :void
   attach_function :avcodec_get_context_defaults3, :avcodec_get_context_defaults3, [ AVCodecContext.ptr, AVCodec.ptr ], :int
+  attach_function :avcodec_alloc_context, :avcodec_alloc_context, [  ], AVCodecContext.ptr
+  attach_function :avcodec_alloc_context2, :avcodec_alloc_context2, [ AVMediaType ], AVCodecContext.ptr
   attach_function :avcodec_alloc_context3, :avcodec_alloc_context3, [ AVCodec.ptr ], AVCodecContext.ptr
   attach_function :avcodec_copy_context, :avcodec_copy_context, [ AVCodecContext.ptr, :pointer ], :int
   attach_function :avcodec_get_frame_defaults, :avcodec_get_frame_defaults, [ AVFrame.ptr ], :void
@@ -1962,13 +2084,17 @@ module FFI::Libav
   attach_function :avcodec_align_dimensions, :avcodec_align_dimensions, [ AVCodecContext.ptr, :pointer, :pointer ], :void
   attach_function :avcodec_align_dimensions2, :avcodec_align_dimensions2, [ AVCodecContext.ptr, :pointer, :pointer, :pointer ], :void
   attach_function :avcodec_default_get_format, :avcodec_default_get_format, [ AVCodecContext.ptr, :pointer ], PixelFormat
+  attach_function :avcodec_thread_init, :avcodec_thread_init, [ AVCodecContext.ptr, :int ], :int
   attach_function :avcodec_default_execute, :avcodec_default_execute, [ AVCodecContext.ptr, callback([ AVCodecContext.ptr, :pointer ], :int), :pointer, :pointer, :int, :int ], :int
   attach_function :avcodec_default_execute2, :avcodec_default_execute2, [ AVCodecContext.ptr, callback([ AVCodecContext.ptr, :pointer, :int, :int ], :int), :pointer, :pointer, :int ], :int
+  attach_function :avcodec_open, :avcodec_open, [ AVCodecContext.ptr, AVCodec.ptr ], :int
   attach_function :avcodec_open2, :avcodec_open2, [ AVCodecContext.ptr, AVCodec.ptr, :pointer ], :int
+  attach_function :avcodec_decode_audio3, :avcodec_decode_audio3, [ AVCodecContext.ptr, :pointer, :pointer, AVPacket.ptr ], :int
   attach_function :avcodec_decode_audio4, :avcodec_decode_audio4, [ AVCodecContext.ptr, AVFrame.ptr, :pointer, AVPacket.ptr ], :int
   attach_function :avcodec_decode_video2, :avcodec_decode_video2, [ AVCodecContext.ptr, AVFrame.ptr, :pointer, AVPacket.ptr ], :int
   attach_function :avcodec_decode_subtitle2, :avcodec_decode_subtitle2, [ AVCodecContext.ptr, AVSubtitle.ptr, :pointer, AVPacket.ptr ], :int
   attach_function :avsubtitle_free, :avsubtitle_free, [ AVSubtitle.ptr ], :void
+  attach_function :avcodec_encode_audio, :avcodec_encode_audio, [ AVCodecContext.ptr, :pointer, :int, :pointer ], :int
   attach_function :avcodec_encode_audio2, :avcodec_encode_audio2, [ AVCodecContext.ptr, AVPacket.ptr, :pointer, :pointer ], :int
   attach_function :avcodec_fill_audio_frame, :avcodec_fill_audio_frame, [ AVFrame.ptr, :int, :int, :pointer, :int, :int ], :int
   attach_function :avcodec_encode_video, :avcodec_encode_video, [ AVCodecContext.ptr, :pointer, :int, :pointer ], :int
@@ -1977,7 +2103,9 @@ module FFI::Libav
   attach_function :avcodec_register_all, :avcodec_register_all, [  ], :void
   attach_function :avcodec_flush_buffers, :avcodec_flush_buffers, [ AVCodecContext.ptr ], :void
   attach_function :avcodec_default_free_buffers, :avcodec_default_free_buffers, [ AVCodecContext.ptr ], :void
+  attach_function :av_get_pict_type_char, :av_get_pict_type_char, [ :int ], :char
   attach_function :av_get_bits_per_sample, :av_get_bits_per_sample, [ CodecID ], :int
+  attach_function :av_get_bits_per_sample_format, :av_get_bits_per_sample_format, [ :int ], :int
   AV_PARSER_PTS_NB = 4
   PARSER_FLAG_COMPLETE_FRAMES = 0x0001
   PARSER_FLAG_ONCE = 0x0002

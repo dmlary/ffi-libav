@@ -132,9 +132,8 @@ class Libav::Stream::Video
 
   def decode_frame(packet)
     initialize_scaling unless @scaling_initialized
-    
-    avcodec_get_frame_defaults(@raw_frame.av_frame)
 
+    avcodec_get_frame_defaults(@raw_frame.av_frame)
     rc = avcodec_decode_video2(@av_codec_ctx, @raw_frame.av_frame,
                               @frame_finished, packet)
     raise RuntimeError, "avcodec_decode_video2() failed, rc=#{rc}" if rc < 0

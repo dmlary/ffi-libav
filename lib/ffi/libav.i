@@ -15,6 +15,7 @@ module FFI::Libav
 %include "libavutil/pixfmt.h"
 %include "libavutil/rational.h"
 %include "libavutil/mem.h"
+%include "libavutil/attributes.h"
 
 %{
 
