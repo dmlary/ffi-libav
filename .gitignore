@@ -11,8 +11,17 @@ spec/reports
 test/tmp
 test/version_tmp
 tmp
+.*.sw[a-z]
+Gemfile.lock
 
 # YARD artifacts
 .yardoc
 _yardoc
 doc/
+
+# ffi-swig-generator intermediate XML files
+lib/ffi/*.xml
+
+# OSX artifacts
+.AppleDouble
+.DS_Store
