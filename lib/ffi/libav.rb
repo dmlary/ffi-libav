@@ -2091,7 +2091,7 @@ module FFI::Libav
   attach_function :avcodec_open2, :avcodec_open2, [ AVCodecContext.ptr, AVCodec.ptr, :pointer ], :int
   attach_function :avcodec_decode_audio3, :avcodec_decode_audio3, [ AVCodecContext.ptr, :pointer, :pointer, AVPacket.ptr ], :int
   attach_function :avcodec_decode_audio4, :avcodec_decode_audio4, [ AVCodecContext.ptr, AVFrame.ptr, :pointer, AVPacket.ptr ], :int
-  attach_function :avcodec_decode_video2, :avcodec_decode_video2, [ AVCodecContext.ptr, AVFrame.ptr, :pointer, AVPacket.ptr ], :int
+  attach_function :avcodec_decode_video2, :avcodec_decode_video2, [ AVCodecContext.ptr, AVFrame.ptr, :pointer, AVPacket.ptr ], :int, { :blocking => true }
   attach_function :avcodec_decode_subtitle2, :avcodec_decode_subtitle2, [ AVCodecContext.ptr, AVSubtitle.ptr, :pointer, AVPacket.ptr ], :int
   attach_function :avsubtitle_free, :avsubtitle_free, [ AVSubtitle.ptr ], :void
   attach_function :avcodec_encode_audio, :avcodec_encode_audio, [ AVCodecContext.ptr, :pointer, :int, :pointer ], :int

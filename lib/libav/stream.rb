@@ -88,24 +88,53 @@ class Libav::Stream::Video
 
   def initialize(p={})
     super(p)
+
+    # Handle frame width and height and XXX scaling
     @width  = p[:widht]  || @av_codec_ctx[:width]
     @height = p[:height] || @av_codec_ctx[:height]
     @pixel_format = p[:pixel_format] || @av_codec_ctx[:pix_fmt]
-    @buffer_size = p[:buffer_size] || 1
+    @scaling_initialized = false
+    @swscale_ctx = nil
 
+    # set up our frame buffer
+    @buffer_size = p[:buffer_size] || 1
+    @buffered_frames = nil
+
+    # Our frame structure for decoding the frame
     @raw_frame = Libav::Frame::Video.new :stream => self,
                                           :width => @av_codec_ctx[:width],
                                           :height => @av_codec_ctx[:height],
-                                          :pixel_format => 
+                                          :pixel_format =>
                                             @av_codec_ctx[:pix_fmt]
 
+    # Pointer used to denote that decode frame was successful
     @frame_finished = FFI::MemoryPointer.new :int
 
-    @scaling_initialized = false
-    @swscale_ctx = nil
-    @buffered_frames = nil
+    # Elaborate schemes to capture an accurate pts value.  When the buffer for
+    # the frame is allocated, we pull the dts from the last packet processed
+    # (set in decode_frame()), and set it in the opaque field of the frame.
+    #
+    # Since we may be running on a 32-bit platform, we can't just shove the
+    # 64-bit dts in the :opaque pointer, so we have to alloc some space for the
+    # address.  Instead of allocating and freeing repeatedly, we're going to
+    # alloc it once now and reuse it for each decoded frame.
+    @last_dts = nil
+    @opaque = FFI::MemoryPointer.new :uint64
+
+    @av_codec_ctx[:get_buffer] = \
+      FFI::Function.new(:int, [AVCodecContext.ptr, AVFrame.ptr]) do |ctx,frame|
+
+        # Use the default method to get the buffer
+        ret = avcodec_default_get_buffer(ctx, frame)
+
+        # Update the :opaque field point at a copy of the last pts we've seen.
+        @opaque.write_int64 @last_dts
+        frame[:opaque] = @opaque
+
+        ret
+      end
   end
-    
+
   def fps
     @av_stream[:r_frame_rate]
   end
@@ -131,18 +160,18 @@ class Libav::Stream::Video
   end
 
   def decode_frame(packet)
-    initialize_scaling unless @scaling_initialized
+    # initialize_scaling unless @scaling_initialized
 
+    @last_dts = packet[:dts]
     avcodec_get_frame_defaults(@raw_frame.av_frame)
     rc = avcodec_decode_video2(@av_codec_ctx, @raw_frame.av_frame,
-                              @frame_finished, packet)
+                               @frame_finished, packet)
     raise RuntimeError, "avcodec_decode_video2() failed, rc=#{rc}" if rc < 0
-
     return if @frame_finished.read_int == 0
 
-    @raw_frame.pts = 0 # @raw_frame.av_frame[:best_effort_timestamp]
+    @raw_frame.pts = @raw_frame.av_frame[:opaque].read_int64
     @raw_frame.number = @av_codec_ctx[:frame_number].to_i
-    
+
     return @raw_frame unless @swscale_ctx
 
     # XXX Need to provide a better mechanism for making sure buffer is ready
@@ -170,12 +199,12 @@ class Libav::Stream::Video
 
     @buffered_frames = @buffer_size.times.map do
       Libav::Frame::Video.new :stream => self,
-                               :width => @width, 
+                               :width => @width,
                                :height => @height,
                                :pixel_format => @pixel_format
     end
 
-    @swscale_ctx = sws_getContext(@av_codec_ctx[:width], 
+    @swscale_ctx = sws_getContext(@av_codec_ctx[:width],
                                   @av_codec_ctx[:height],
                                   @av_codec_ctx[:pix_fmt],
                                   @width, @height, @pixel_format,

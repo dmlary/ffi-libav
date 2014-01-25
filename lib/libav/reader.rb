@@ -17,8 +17,24 @@ class Libav::Reader
 
     rc = avformat_find_stream_info(@av_format_ctx, nil)
     raise RuntimeError, "av_find_stream_info() failed, rc=#{rc}" if rc < 0
-    
+
+    # Open all of our streams
     initialize_streams(p)
+
+    # Set up a finalizer to close all the things we've opened
+    ObjectSpace.define_finalizer(self,
+      cleanup_proc(@av_format_ctx, streams.map { |s| s.av_codec_ctx }))
+
+    # Our packet for reading
+    @packet = AVPacket.new
+    av_init_packet(@packet)
+  end
+
+  def cleanup_proc(codecs, format)
+    proc do
+      codecs.each { |codec| avcodec_close codec }
+      avformat_close_input(format)
+    end
   end
 
   def dump_format
@@ -33,18 +49,12 @@ class Libav::Reader
   def each_frame(&block)
     raise ArgumentError, "No block provided" unless block_given?
 
-    packet = AVPacket.new
-    # packet = AVPacket.new packet
-
-    while av_read_frame(@av_format_ctx, packet) >= 0
-      frame = @streams[packet[:stream_index]].decode_frame(packet)
+    while av_read_frame(@av_format_ctx, @packet) >= 0
+      frame = @streams[@packet[:stream_index]].decode_frame(@packet)
+      av_free_packet(@packet)
       rc = frame ? yield(frame) : true
-      # av_free_packet(packet)
-
       break if rc == false
     end
-
-    av_free(packet)
   end
 
   def default_stream
@@ -71,7 +81,7 @@ class Libav::Reader
                                   :width => p[:width],
                                   :height => p[:height])
       else
-        Libav::Stream::Unsupported.new(:reader => self, 
+        Libav::Stream::Unsupported.new(:reader => self,
                                         :av_stream => av_stream)
       end
     end
