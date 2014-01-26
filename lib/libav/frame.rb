@@ -17,14 +17,16 @@ class Libav::Frame::Video
     # Create our frame and alloc space for the frame data
     @av_frame = AVFrame.new
 
-    # XXX This memory needs to be allocated only for a frame that we manage
-    # av_picture = AVPicture.new @av_frame.pointer
-    # avpicture_alloc(av_picture, pixel_format, width, height)
-    # ObjectSpace.define_finalizer(self, self.class.finalize(av_picture))
+    # Allocate the frame's data unless the caller doesn't want us to.
+    unless p[:alloc] == false
+      av_picture = AVPicture.new @av_frame.pointer
+      avpicture_alloc(av_picture, pixel_format, width, height)
+      ObjectSpace.define_finalizer(self, cleanup_proc(av_picture))
+    end
   end
 
-  def self.finalize(picture)
-    proc { pp :xfree => picture; FFI::Libav.avpicture_free(picture); pp :done }
+  def cleanup_proc(picture)
+    proc { avpicture_free(picture) }
   end
 
   # Throw together a bunch of helper methods for accessing the AVFrame
@@ -73,7 +75,7 @@ class Libav::Frame::Video
     sws_freeContext(scale_ctx) unless p[:scale_ctx]
 
     # Let's copy a handful of attributes to the scaled frame
-    %w{ pts number best_effort_timestamp key_frame }.each do |k|
+    %w{ pts number key_frame }.each do |k|
       scale_frame.send("#{k}=", send(k))
     end
 

@@ -84,24 +84,19 @@ end
 class Libav::Stream::Video
   include Libav::Stream
 
-  attr_reader :raw_frame, :width, :height, :pixel_format, :buffer_size, :reader
+  attr_reader :raw_frame, :width, :height, :pixel_format, :reader
 
   def initialize(p={})
     super(p)
 
-    # Handle frame width and height and XXX scaling
+    # Handle frame width and height and setup any scaling necessary
     @width  = p[:widht]  || @av_codec_ctx[:width]
     @height = p[:height] || @av_codec_ctx[:height]
     @pixel_format = p[:pixel_format] || @av_codec_ctx[:pix_fmt]
-    @scaling_initialized = false
-    @swscale_ctx = nil
-
-    # set up our frame buffer
-    @buffer_size = p[:buffer_size] || 1
-    @buffered_frames = nil
+    init_scaling
 
     # Our frame structure for decoding the frame
-    @raw_frame = Libav::Frame::Video.new :stream => self,
+    @raw_frame = Libav::Frame::Video.new :stream => self, :alloc => false,
                                           :width => @av_codec_ctx[:width],
                                           :height => @av_codec_ctx[:height],
                                           :pixel_format =>
@@ -140,23 +135,18 @@ class Libav::Stream::Video
   end
 
   def width=(width)
-    @scaling_initialized = false
     @width = width
+    init_scaling
   end
 
   def height=(height)
-    @scaling_initialized = false
     @height = height
+    init_scaling
   end
 
   def pixel_format=(pixel_format)
-    @scaling_initialized = false
     @pixel_format = pixel_format
-  end
-
-  def buffer_size=(frames)
-    @scaling_initialized = false
-    @buffer_size = frames
+    init_scaling
   end
 
   def decode_frame(packet)
@@ -174,35 +164,22 @@ class Libav::Stream::Video
 
     return @raw_frame unless @swscale_ctx
 
-    # XXX Need to provide a better mechanism for making sure buffer is ready
-    # for use.
-    scaled_frame = @buffered_frames.shift
-    @buffered_frames << scaled_frame
-
     @raw_frame.scale(:width => @width, :height => @height,
                      :pixel_format => @pixel_format,
                      :scale_ctx => @swscale_ctx,
-                     :output_frame => scaled_frame)
+                     :output_frame => @scaled_frame)
   end
 
   private
 
-  def initialize_scaling
-    @scaling_initialized = true
+  def init_scaling
+    sws_freeContext(@swscale_ctx) unless @swscale_ctx.nil?
     @swscale_ctx = nil
-    @buffered_frames = nil
+    @scaled_frame = nil
 
     return if @width == @av_codec_ctx[:width] &&
               @height == @av_codec_ctx[:height] &&
-              @pixel_format == @av_codec_ctx[:pix_fmt] &&
-              @buffer_size < 2
-
-    @buffered_frames = @buffer_size.times.map do
-      Libav::Frame::Video.new :stream => self,
-                               :width => @width,
-                               :height => @height,
-                               :pixel_format => @pixel_format
-    end
+              @pixel_format == @av_codec_ctx[:pix_fmt]
 
     @swscale_ctx = sws_getContext(@av_codec_ctx[:width],
                                   @av_codec_ctx[:height],
@@ -210,6 +187,11 @@ class Libav::Stream::Video
                                   @width, @height, @pixel_format,
                                   SWS_BICUBIC, nil, nil, nil) or
       raise NoMemoryError, "sws_getContext() failed"
+
+    @scaled_frame = Libav::Frame::Video.new(:width => @width,
+                                            :height => @height,
+                                            :pixel_format => @pixel_format,
+                                            :stream => self)
   end
 end
 
