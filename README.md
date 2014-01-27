@@ -19,10 +19,10 @@ Or install it yourself as:
 ## Usage
 
 ```ruby
-require 'ffi-ffmpeg'
+require 'ffi-libav'
 
 # Allocate a reader for our video file
-reader = FFmpeg::Reader.new(ARGV[0])
+reader = Libav::Reader.new(ARGV[0])
 
 # Dump the format information for the file
 reader.dump_format
