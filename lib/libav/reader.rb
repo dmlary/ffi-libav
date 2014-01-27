@@ -1,10 +1,16 @@
 require 'ffi/libav'
 
+# Libav file reader
 class Libav::Reader
   include FFI::Libav
 
   attr_reader :filename, :streams, :av_format_ctx
 
+  # Initialize a Reader for a specific file
+  #
+  # ==== Attributes
+  # * +filename+ - file to read
+  #
   def initialize(filename, p={})
     @filename = filename or raise ArgumentError, "No filename"
 
@@ -30,13 +36,7 @@ class Libav::Reader
     av_init_packet(@packet)
   end
 
-  def cleanup_proc(codecs, format)
-    proc do
-      codecs.each { |codec| avcodec_close codec }
-      avformat_close_input(format)
-    end
-  end
-
+  # Call +av_dump_format+ to print out the format info for the video
   def dump_format
     FFI::Libav.av_dump_format(@av_format_ctx, 0, @filename, 0)
   end
@@ -46,6 +46,19 @@ class Libav::Reader
     @duration ||= @av_format_ctx[:duration].to_f / AV_TIME_BASE
   end
 
+  # Loop through each frame
+  #
+  # ==== Argument
+  # * +block+ - block of code to call with the frame
+  #
+  # ==== Usage
+  #   # Read each frame
+  #   reader.each_frame do |frame|
+  #
+  #     # call some method for showing the frame
+  #     my_show_frame(frame)
+  #   end
+  #
   def each_frame(&block)
     raise ArgumentError, "No block provided" unless block_given?
 
@@ -57,16 +70,28 @@ class Libav::Reader
     end
   end
 
+  # Get the default stream
   def default_stream
     @streams[av_find_default_stream_index(@av_format_ctx)]
   end
 
+  # See Libav::Stream.seek
   def seek(p = {})
     default_stream.seek(p)
   end
 
   private
 
+  # Generate the Proc that is responsible for releasing our avcodec, avformat
+  # structures.
+  def cleanup_proc(codecs, format)
+    proc do
+      codecs.each { |codec| avcodec_close codec }
+      avformat_close_input(format)
+    end
+  end
+
+  # Lookup and initialize the streams
   def initialize_streams(p={})
     @streams = @av_format_ctx[:nb_streams].times.map do |i|
       av_stream = AVStream.new \

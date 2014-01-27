@@ -1278,7 +1278,7 @@ module FFI::Libav
            :sample_aspect_ratio, AVRational.by_value,
            :width, :int,
            :height, :int,
-           :format, :int
+           :format, PixelFormat,
     )
   end
   AV_FIELD_UNKNOWN = 0

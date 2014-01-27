@@ -1,5 +1,6 @@
 require 'ffi/libav'
 
+# Generic Stream class.  Most of the logic resides in Libav::Stream::Video.
 module Libav::Stream
   include FFI::Libav
 
@@ -38,16 +39,19 @@ module Libav::Stream
     raise NotImplementedError, "decode_frame() not defined for #{self.class}"
   end
 
-  def each_frame
+  # Loop through each frame of this stream
+  def each_frame(&block)
     @reader.each_frame { |frame| yield frame if frame.stream == self }
   end
 
+  # Get the next frame in the stream
   def next_frame
     frame = nil
     each_frame { |f| frame = f; break }
     frame
   end
 
+  # Skip some +n+ frames in the stream
   def skip_frames(n)
     raise RuntimeError, "Cannot skip frames when discarding all frames" if
       discard == :all
@@ -134,21 +138,25 @@ class Libav::Stream::Video
     @av_stream[:r_frame_rate]
   end
 
+  # Set the +width+ of the frames returned by +decode_frame+
   def width=(width)
     @width = width
     init_scaling
   end
 
+  # Set the +height+ of the frames returned by +decode_frame+
   def height=(height)
     @height = height
     init_scaling
   end
 
+  # Set the +pixel format+ of the frames returned by +decode_frame+
   def pixel_format=(pixel_format)
     @pixel_format = pixel_format
     init_scaling
   end
 
+  # Called by Libav::Reader.each_frame to decode each frame
   def decode_frame(packet)
     # initialize_scaling unless @scaling_initialized
 
@@ -164,9 +172,7 @@ class Libav::Stream::Video
 
     return @raw_frame unless @swscale_ctx
 
-    @raw_frame.scale(:width => @width, :height => @height,
-                     :pixel_format => @pixel_format,
-                     :scale_ctx => @swscale_ctx,
+    @raw_frame.scale(:scale_ctx => @swscale_ctx,
                      :output_frame => @scaled_frame)
   end
 
