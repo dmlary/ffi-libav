@@ -7,3 +7,7 @@ end
 rule ".xml" => ".i" do |t|
   sh "swig -I/usr/include -xml -o #{t.source.sub(/\.i$/, ".xml")} #{t.source}"
 end
+
+task(:test) do |t|
+  sh "rspec -fn -c"
+end

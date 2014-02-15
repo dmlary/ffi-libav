@@ -46,7 +46,7 @@ class Libav::Frame::Video
   end
 
   def key_frame?
-    key_frame == 1
+    key_frame != 0
   end
 
   def pixel_format
