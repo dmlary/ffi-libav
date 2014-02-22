@@ -16,6 +16,7 @@ module FFI::Libav
 %include "libavutil/rational.h"
 %include "libavutil/mem.h"
 %include "libavutil/attributes.h"
+%include "libavutil/mathematics.h"
 
 %{
 

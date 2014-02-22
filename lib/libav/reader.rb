@@ -2,14 +2,36 @@ require 'ffi/libav'
 
 # Libav file reader
 class Libav::Reader
+  extend Forwardable
   include FFI::Libav
 
-  attr_reader :filename, :streams, :av_format_ctx
+  attr_reader :filename, :streams, :av_format_ctx, :ffs
+  def_delegator :@av_format_ctx, :[], :[]
 
   # Initialize a Reader for a specific file
   #
   # ==== Attributes
   # * +filename+ - file to read
+  #
+  # ==== Options
+  # * +:ffs+ - Enable and supply fast-frame-seek data (default: false)
+  #
+  # ==== Usage
+  #   # open a file named 'video.ts' for reading
+  #   r = Libav::Reader.new("video.ts")
+  #
+  #   # open the same video and enable FFS
+  #   r = Libav::Reader.new("video.ts", :ffs => true)
+  #   r.each_frame { |f| do_something(f) }
+  #   
+  #   # After reading any portion of the file, save the FFS data
+  #   File.open("video_ffs.yml", "w") do |file|
+  #     file.write(r.ffs.to_yaml)
+  #   end
+  #
+  #   # open a video file and use FFS data from a previous run
+  #   ffs = Yaml.load_file("video_ffs.yml")
+  #   r = Libav::Reader.new("video.ts", :ffs => ffs)
   #
   def initialize(filename, p={})
     @filename = filename or raise ArgumentError, "No filename"
@@ -34,6 +56,7 @@ class Libav::Reader
     # Our packet for reading
     @packet = AVPacket.new
     av_init_packet(@packet)
+
   end
 
   # Call +av_dump_format+ to print out the format info for the video
@@ -93,6 +116,11 @@ class Libav::Reader
 
   # Lookup and initialize the streams
   def initialize_streams(p={})
+
+    # Initialize our ffs variable if needed
+    @ffs = p[:ffs]
+    @ffs = Array.new(@av_format_ctx[:nb_streams]) { [] } if @ffs == true
+
     @streams = @av_format_ctx[:nb_streams].times.map do |i|
       av_stream = AVStream.new \
             @av_format_ctx[:streams].get_pointer(i * FFI::Pointer::SIZE)
@@ -104,7 +132,8 @@ class Libav::Reader
                                   :av_stream => av_stream,
                                   :pixel_format => p[:pixel_format],
                                   :width => p[:width],
-                                  :height => p[:height])
+                                  :height => p[:height],
+                                  :ffs => @ffs && @ffs[av_stream[:index]])
       else
         Libav::Stream::Unsupported.new(:reader => self,
                                         :av_stream => av_stream)

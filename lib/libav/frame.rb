@@ -3,10 +3,12 @@ require 'ffi/libav'
 module Libav::Frame; end
 
 class Libav::Frame::Video
+  extend Forwardable
   include FFI::Libav
 
   attr_reader :av_frame, :stream
-  attr_accessor :number
+  attr_accessor :number, :pos
+  def_delegator :@av_frame, :[], :[]
 
   # Initialize a new frame, and optionally allocate memory for the frame data.
   #
@@ -38,23 +40,28 @@ class Libav::Frame::Video
     end
   end
 
-  # Throw together a bunch of helper methods for accessing the AVFrame
-  # attributes.
-  AVFrame.members.each do |member|
-    define_method(member) { @av_frame[member] }
-    define_method(member.to_s + "=") { |v| @av_frame[member] = v }
+  # define a few reader methods to read the underlying AVFrame
+  %w{ width height data linesize }.each do |field|
+    define_method(field) { @av_frame[field.to_sym] }
+  end
+
+  # define a few accessor methods to read/write fields in the AVFrame
+  %w{ pts key_frame }.each do |field|
+    define_method(field) { @av_frame[field.to_sym] }
+    define_method("#{field}=") { |v| @av_frame[field.to_sym] = v }
   end
 
   def key_frame?
-    key_frame != 0
+    @av_frame[:key_frame] != 0
   end
 
   def pixel_format
-    format.is_a?(Fixnum) ? PixelFormat[format] : format
+    @av_frame[:format]
   end
 
-  def pixel_format=(v)
-    send("format=", (v.is_a?(Fixnum) ? v : PixelFormat[v]))
+  # Get the presentation timestamp for this frame in fractional seconds
+  def timestamp
+    pts * @stream[:time_base].to_f
   end
 
   # Scale the frame
@@ -94,8 +101,8 @@ class Libav::Frame::Video
     sws_freeContext(ctx) unless p[:scale_ctx]
 
     # Let's copy a handful of attributes to the scaled frame
-    %w{ pts number key_frame }.each do |k|
-      out.send("#{k}=", send(k))
+    %w{ pts number pos key_frame }.each do |field|
+      out.send("#{field}=", send(field))
     end
 
     # Return our scaled frame

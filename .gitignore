@@ -25,3 +25,6 @@ lib/ffi/*.xml
 # OSX artifacts
 .AppleDouble
 .DS_Store
+
+# We don't want to include the test video
+spec/data/big_buck_bunny_480p_surround-fix.avi

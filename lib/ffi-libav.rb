@@ -1,3 +1,4 @@
+require 'forwardable'
 require 'ffi/libav'
 require 'libav/version'
 require 'libav/frame'

@@ -251,6 +251,11 @@ module FFI::Libav
       self[:num].to_f / self[:den]
     end
   end
+
+  AV_TIME_BASE_Q = AVRational.new
+  AV_TIME_BASE_Q[:num] = 1
+  AV_TIME_BASE_Q[:den] = AV_TIME_BASE
+
   # inline function av_cmp_q
   # inline function av_q2d
   attach_function :av_reduce, :av_reduce, [ :pointer, :pointer, :int64, :int64, :int64 ], :int
@@ -267,6 +272,35 @@ module FFI::Libav
   attach_function :av_mallocz, :av_mallocz, [ :uint ], :pointer
   attach_function :av_strdup, :av_strdup, [ :string ], :string
   attach_function :av_freep, :av_freep, [ :pointer ], :void
+  M_E = 2.7182818284590452354
+  M_LN2 = 0.69314718055994530942
+  M_LN10 = 2.30258509299404568402
+  M_LOG2_10 = 3.32192809488736234787
+  M_PHI = 1.61803398874989484820
+  M_PI = 3.14159265358979323846
+  M_SQRT1_2 = 0.70710678118654752440
+  M_SQRT2 = 1.41421356237309504880
+  NAN = (0.0/0.0)
+  INFINITY = (1.0/0.0)
+  AV_ROUND_ZERO = 0
+  AV_ROUND_INF = 1
+  AV_ROUND_DOWN = 2
+  AV_ROUND_UP = 3
+  AV_ROUND_NEAR_INF = 5
+  AVRounding = enum :AVRounding, [
+    :zero, 0,
+    :inf, 1,
+    :down, 2,
+    :up, 3,
+    :near_inf, 5,
+  ]
+
+  attach_function :av_gcd, :av_gcd, [ :int64, :int64 ], :int64
+  attach_function :av_rescale, :av_rescale, [ :int64, :int64, :int64 ], :int64
+  attach_function :av_rescale_rnd, :av_rescale_rnd, [ :int64, :int64, :int64, AVRounding ], :int64
+  attach_function :av_rescale_q, :av_rescale_q, [ :int64, AVRational.by_value, AVRational.by_value ], :int64
+  attach_function :av_compare_ts, :av_compare_ts, [ :int64, AVRational.by_value, :int64, AVRational.by_value ], :int
+  attach_function :av_compare_mod, :av_compare_mod, [ :uint64, :uint64, :uint64 ], :int64
 
 
   ffi_lib [ "libavcodec.so.53", "libavcodec.53.dylib" ]

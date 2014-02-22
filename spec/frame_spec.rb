@@ -49,7 +49,7 @@ describe Frame::Video do
     before { subject.pts = 0xFEEDFACE }
     its(:pts) { should eq(0xFEEDFACE) }
     it "should set av_frame[:pts]" do
-      subject.av_frame[:pts].should eq(0xFEEDFACE)
+      expect(subject.av_frame[:pts]).to eq(0xFEEDFACE)
     end
   end
 
@@ -75,7 +75,7 @@ describe Frame::Video do
       before { subject.key_frame = 1 }
       its(:key_frame?) { should eq(true) }
       it "should set av_frame[:key_frame]" do
-        subject.av_frame[:key_frame].should eq(1)
+        expect(subject.av_frame[:key_frame]).to eq(1)
       end
     end
 
@@ -83,7 +83,7 @@ describe Frame::Video do
       before { subject.key_frame = 0 }
       its(:key_frame?) { should eq(false) }
       it "should set av_frame[:key_frame]" do
-        subject.av_frame[:key_frame].should eq(0)
+        expect(subject.av_frame[:key_frame]).to eq(0)
       end
     end
 
@@ -91,7 +91,7 @@ describe Frame::Video do
       before { subject.key_frame = 0xBEEF }
       its(:key_frame?) { should eq(true) }
       it "should set av_frame[:key_frame]" do
-        subject.av_frame[:key_frame].should eq(0xBEEF)
+        expect(subject.av_frame[:key_frame]).to eq(0xBEEF)
       end
     end
   end
@@ -99,6 +99,42 @@ describe Frame::Video do
   describe "#pixel_format" do
     before { subject.av_frame[:format] = :rgba }
     its(:pixel_format) { should eq(:rgba) }
+  end
+
+  describe "#[]" do
+    let(:pts) { rand(0xFFFFFFFF) }
+    before { subject.av_frame[:pts] = pts }
+    it "should delegate to frame.av_frame" do
+      expect(subject[:pts]).to eq pts
+    end
+  end
+
+  describe "#av_frame" do
+    its('av_frame.class') { should be FFI::Libav::AVFrame }
+  end
+
+  describe "#timestamp" do
+    subject do
+      # fake a stream
+      stream = Object.new
+      stream.stub(:width) { 1200 }
+      stream.stub(:height) { 100 }
+      stream.stub(:pixel_format) { :gray8 }
+
+      # We stub out the [] method to return the :time_base for 24 FPS
+      stream.stub(:[]) do
+        f = FFI::Libav::AVRational.new
+        f[:num] = 1
+        f[:den] = 24
+        f
+      end
+      
+      # Make a frame from this stream
+      frame = Frame::Video.new :stream => stream
+      frame.pts = 25
+      frame
+    end
+    its(:timestamp) { should eq(1/24.0 * 25) }
   end
 end
 
@@ -131,7 +167,6 @@ describe Libav::Frame, "#scale" do
       # figure out the contents of a single line in our row
       line = pattern.join("")
       line += " " * pad_length
-      line.size.should be(frame.linesize[0])
 
       # Now construct the data for the entire row
       buf = line * row_height
@@ -214,7 +249,10 @@ describe Libav::Frame, "#scale" do
     its(:number) { should be src_frame.number }
     its(:key_frame?) { should be src_frame.key_frame? }
     it "contains a 100x100 image" do
-      subject.data[0].get_bytes(100, 50).should match(/\xBE+$/)
+      linesize = subject.linesize[0]
+      expect(subject.data[0].get_bytes(100, 50)).to match(/\xBE+$/)
+      expect(subject.data[0].get_bytes(linesize * 99, 100)).to_not match(/^\xBE+$/)
+      expect(subject.data[0].get_bytes(linesize * 100, 100)).to match(/^\xBE+$/)
     end
   end
 end
