@@ -109,6 +109,11 @@ class Libav::Frame::Video
     out
   end
 
+  # Release frame back to buffered stream for re-use
+  def release
+    stream.release_frame(self)
+  end
+
   private
 
   # Returns Proc responsible for cleaning up the picture memory when it gets

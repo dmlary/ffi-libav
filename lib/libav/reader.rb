@@ -23,7 +23,7 @@ class Libav::Reader
   #   # open the same video and enable FFS
   #   r = Libav::Reader.new("video.ts", :ffs => true)
   #   r.each_frame { |f| do_something(f) }
-  #   
+  #
   #   # After reading any portion of the file, save the FFS data
   #   File.open("video_ffs.yml", "w") do |file|
   #     file.write(r.ffs.to_yaml)
@@ -74,6 +74,10 @@ class Libav::Reader
   # ==== Argument
   # * +block+ - block of code to call with the frame
   #
+  # ==== Options
+  # * +:stream+ stream index or indexes to get frames for
+  # * +:buffer+ number of frames to buffer in each stream
+  #
   # ==== Usage
   #   # Read each frame
   #   reader.each_frame do |frame|
@@ -82,13 +86,32 @@ class Libav::Reader
   #     my_show_frame(frame)
   #   end
   #
-  def each_frame(&block)
+  def each_frame(p={}, &block)
     raise ArgumentError, "No block provided" unless block_given?
 
+    # Patch up the :stream argument
+    p[:stream] ||= @streams.map { |s| s[:index] }
+    p[:stream] = [ p[:stream] ] unless p[:stream].is_a? Array
+
+    # Notify each stream of the requested buffer size
+    p[:stream].each { |i| @streams[i].buffer = p[:buffer] if p[:buffer]}
+
+    # Let's read frames
     while av_read_frame(@av_format_ctx, @packet) >= 0
-      frame = @streams[@packet[:stream_index]].decode_frame(@packet)
+
+      # Only call the decoder if the packet is from a stream we're interested
+      # in.
+      frame = nil
+      frame = @streams[@packet[:stream_index]].decode_frame(@packet) if
+        p[:stream].include? @packet[:stream_index]
+
+      # release our packet memory
       av_free_packet(@packet)
+
+      # yield the frame if we have one
       rc = frame ? yield(frame) : true
+
+      # break if the block returned false
       break if rc == false
     end
   end

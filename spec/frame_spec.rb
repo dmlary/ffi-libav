@@ -136,6 +136,22 @@ describe Frame::Video do
     end
     its(:timestamp) { should eq(1/24.0 * 25) }
   end
+
+  describe "#release" do
+    it "calls stream.release_frame(self)" do
+      stream = Object.new
+      stream.stub(:width) { 1200 }
+      stream.stub(:height) { 100 }
+      stream.stub(:pixel_format) { :gray8 }
+      stream.stub(:release_frame) { @released = true }
+      stream.stub(:released) { @released }
+      frame = Frame::Video.new :stream => stream
+
+      expect(stream.released).to be nil
+      frame.release()
+      expect(stream.released).to be true
+    end
+  end
 end
 
 describe Libav::Frame, "#scale" do
