@@ -56,17 +56,6 @@ describe Libav::Stream::Video do
         expect(frames).to eq (1..250).to_a
       end
 
-      it "stops looping if the block returns false" do
-        count = 0
-        subject.each_frame(:buffer => buffer_size) do |frame|
-          stream.release_frame(frame)
-          expect(count).to be < 5
-          count += 1
-          count < 5
-        end
-        expect(count).to be 5
-      end
-
       it "adjusts the output frame number for the frame number offset" do
         subject.instance_eval { @frame_offset = 100_000 }
         subject.each_frame(:buffer => buffer_size) do |frame|
@@ -143,12 +132,7 @@ describe Libav::Stream::Video do
     shared_examples "scaling video frame yielder" do
       context "without scaling" do
         let(:frame) do
-          frame = nil
-          stream.each_frame(:buffer => buffer_size) do |f|
-            frame = f
-            break
-          end
-          frame
+          stream.each_frame(:buffer => buffer_size) { |f| f.release; break f }
         end
         after(:each) { stream.release_frame(frame) }
 
@@ -342,14 +326,99 @@ describe Libav::Stream::Video do
   end
 
   describe "#skip_frames" do
-    let!(:offset) { rand(10000) }
-    before { subject.skip_frames(offset) }
-    its("next_frame.number") { should eq 1 + offset }
+    before { subject.skip_frames(100) }
+    its("next_frame.number") { should eq 101 }
   end
 
   describe "#rewind" do
-    it "cannot rewind past start of buffered frames"
-    it "changes the frame returned by #next_frame"
+    it "causes #each_frame to yield previously yielded frames" do
+      first = []
+      stream.each_frame(:buffer => 5) do |frame|
+        first << frame.number
+        frame.release
+        break if first.size == 5
+      end
+
+      stream.rewind(5)
+      second = []
+      stream.each_frame do |frame|
+        second << frame.number
+        frame.release
+        break if second.size == 5
+      end
+
+      expect(first).to eq second
+    end
+
+    it "returns 0 when no frames have been decoded" do
+      # XXX should be in reader_spec
+      expect(stream.rewind).to eq 0
+    end
+
+    it "returns 0 when count is 0" do
+      # XXX should be in reader_spec
+      expect(stream.rewind(0)).to eq 0
+    end
+
+    it "rewinds as many frames as possible when count exceeds buffer" do
+      first = []
+      stream.each_frame(:buffer => 5) do |frame|
+        first << frame.number
+        frame.release
+        break if first.size == 10
+      end
+
+      expect(stream.rewind(10)).to eq 5
+      expect(stream.each_frame { |f| break f }.number).to be 6
+    end
+
+    it "removes rewound frames from decoding queue" do
+      frames = []
+      stream.each_frame(:buffer => 5) do |frame|
+        frames << frame.object_id
+        frame.release
+        break if frames.size == 5
+      end
+      expect(frames.uniq.size).to eq 5
+
+      # rewind the last five frames
+      stream.rewind(5)
+    
+      # skip the next five frames
+      stream.skip_frames(5)
+
+      # the sixth frame should be a new object id
+      expect(frames).to_not include(stream.next_frame.object_id)
+    end
+
+    it "can be called multiple times" do
+      frames = []
+      stream.each_frame(:buffer => 5) do |frame|
+        frames << frame.number
+        frame.release
+        break if frames.size == 5
+      end
+     
+      stream.rewind(1)
+      expect(stream.next_frame.number).to eq frames[4]
+
+      stream.rewind(2)
+      expect(stream.next_frame.number).to eq frames[3]
+
+      stream.rewind(2)
+      expect(stream.next_frame.number).to eq frames[2]
+
+      stream.rewind(2)
+      expect(stream.next_frame.number).to eq frames[1]
+
+      stream.rewind(2)
+      expect(stream.next_frame.number).to eq frames[0]
+      expect(stream.next_frame.number).to eq frames[1]
+      expect(stream.next_frame.number).to eq frames[2]
+      expect(stream.next_frame.number).to eq frames[3]
+      expect(stream.next_frame.number).to eq frames[4]
+      expect(stream.next_frame.number).to eq frames[4] + 1
+    end
   end
 
   describe "#index" do
@@ -375,8 +444,6 @@ describe Libav::Stream::Video do
   end
 
   context "with FFS disabled" do
-    its(:ffs) { should be nil }
-
     describe "#each_frame" do
       it "does not update FFS data" do
         count = 0
@@ -412,84 +479,84 @@ describe Libav::Stream::Video do
     end
   end
 
-  context "with FFS enabled" do
-    subject(:reader) { Libav::Reader.new(test_video, :ffs => true) }
-    subject(:stream) { reader.streams.find { |stream| stream.type == :video } }
-
-    its(:ffs) { should be_empty }
-
-    describe "#each_frame" do
-      context "before seeking" do
-        it "updates ffs data for key frames read" do
-          count = 0
-          stream.each_frame { |f| count += 1 if f.key_frame?; count < 20 }
-          expect(stream.ffs).to eq ffs_data[stream.index][0..19]
-        end
-        it "updates last frame data for each frame read" do
-          count = 0
-          stream.each_frame do |frame|
-            count += 1
-            expect(stream.ffs.last[0]).to eq frame.number
-            expect(stream.ffs.last[1]).to eq frame.pts
-            count < 100
-          end
-        end
-      end
-
-      context "after seeking" do
-        it "does not update ffs data for key frames read" do
-          stream.seek(:byte => 100_000)
-          count = 0
-          stream.each_frame { |f| count += 1 if f.key_frame?; count < 20 }
-          expect(stream.ffs).to eq []
-        end
-        it "does not update last frame data"
-      end
-    end
-  end
-
-  context "with FFS data provided" do
-    subject(:reader) { Libav::Reader.new(test_video, :ffs => ffs_data) }
-    subject(:stream) { reader.streams.find { |stream| stream.type == :video } }
-
-    its(:ffs) { should be ffs_data[stream.index] }
-
-    describe "#each_frame" do
-      it "does not update ffs for known keyframes" do
-        count = 0
-        stream.each_frame { |f| count += 1 if f.key_frame?; count < 20 }
-        expect(stream.ffs).to eq ffs_data[stream.index]
-      end
-      xit "updates ffs data for unknown keyframes" do
-        # seek to the last key frame we saw by file position
-        stream.seek(:byte => ffs_data[0].last.last)
-
-        # Make a copy of the FFS data
-        starting_ffs = stream.ffs.dup
-
-        # Read 20 key frames
-        count = 0
-        stream.each_frame { |f| count += 1 if f.key_frame?; count < 20 }
-
-        expect(stream.ffs.size).to eq 120
-        expect(stream.ffs).to_not eq starting_ffs
-        expect(stream.ffs[100]).to_not eq stream.ffs[101]
-      end
-    end
-
-    describe "#seek" do
-      it "can find a key frame by pts"
-      it "can find a non-key frame by pts"
-      it "can find a key frame by frame number"
-      it "can find a non-key frame by frame number"
-      it "adjusts frame number offset"
-      it "adjusts frame pts offset"
-      context "seeking outside of FFS data" do
-        it "stops FFS updates"
-      end
-      context "seeking into FFS data" do
-        it "resumes FFS updates"
-      end
-    end
-  end
+#   context "with FFS enabled" do
+#     subject(:reader) { Libav::Reader.new(test_video, :ffs => true) }
+#     subject(:stream) { reader.streams.find { |stream| stream.type == :video } }
+# 
+#     its(:ffs) { should be_empty }
+# 
+#     describe "#each_frame" do
+#       context "before seeking" do
+#         it "updates ffs data for key frames read" do
+#           count = 0
+#           stream.each_frame { |f| count += 1 if f.key_frame?; count < 20 }
+#           expect(stream.ffs).to eq ffs_data[stream.index][0..19]
+#         end
+#         it "updates last frame data for each frame read" do
+#           count = 0
+#           stream.each_frame do |frame|
+#             count += 1
+#             expect(stream.ffs.last[0]).to eq frame.number
+#             expect(stream.ffs.last[1]).to eq frame.pts
+#             count < 100
+#           end
+#         end
+#       end
+# 
+#       context "after seeking" do
+#         it "does not update ffs data for key frames read" do
+#           stream.seek(:byte => 100_000)
+#           count = 0
+#           stream.each_frame { |f| count += 1 if f.key_frame?; count < 20 }
+#           expect(stream.ffs).to eq []
+#         end
+#         it "does not update last frame data"
+#       end
+#     end
+#   end
+# 
+#   context "with FFS data provided" do
+#     subject(:reader) { Libav::Reader.new(test_video, :ffs => ffs_data) }
+#     subject(:stream) { reader.streams.find { |stream| stream.type == :video } }
+# 
+#     its(:ffs) { should be ffs_data[stream.index] }
+# 
+#     describe "#each_frame" do
+#       it "does not update ffs for known keyframes" do
+#         count = 0
+#         stream.each_frame { |f| count += 1 if f.key_frame?; count < 20 }
+#         expect(stream.ffs).to eq ffs_data[stream.index]
+#       end
+#       xit "updates ffs data for unknown keyframes" do
+#         # seek to the last key frame we saw by file position
+#         stream.seek(:byte => ffs_data[0].last.last)
+# 
+#         # Make a copy of the FFS data
+#         starting_ffs = stream.ffs.dup
+# 
+#         # Read 20 key frames
+#         count = 0
+#         stream.each_frame { |f| count += 1 if f.key_frame?; count < 20 }
+# 
+#         expect(stream.ffs.size).to eq 120
+#         expect(stream.ffs).to_not eq starting_ffs
+#         expect(stream.ffs[100]).to_not eq stream.ffs[101]
+#       end
+#     end
+# 
+#     describe "#seek" do
+#       it "can find a key frame by pts"
+#       it "can find a non-key frame by pts"
+#       it "can find a key frame by frame number"
+#       it "can find a non-key frame by frame number"
+#       it "adjusts frame number offset"
+#       it "adjusts frame pts offset"
+#       context "seeking outside of FFS data" do
+#         it "stops FFS updates"
+#       end
+#       context "seeking into FFS data" do
+#         it "resumes FFS updates"
+#       end
+#     end
+#   end
 end

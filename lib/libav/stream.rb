@@ -53,16 +53,15 @@ module Libav::Stream
 
   # Get the next frame in the stream
   def next_frame
-    frame = nil
-    each_frame { |f| frame = f; break }
-    frame
+    each_frame { |f| break f }
   end
 
   # Skip some +n+ frames in the stream
   def skip_frames(n)
+    # XXX not sure if this is true
     raise RuntimeError, "Cannot skip frames when discarding all frames" if
       discard == :all
-    each_frame { |f| (n -= 1) != 0 }
+    each_frame { |f| f.release; n -= 1; break if n == 0}
   end
 
   # Seek to a specific location within the stream; the location can be either
@@ -242,11 +241,6 @@ class Libav::Stream::Video
         ret
       end
 
-    # Point at our fast frame seeking data, and set our update ffs variable to
-    # true if any data was provided.
-    @ffs = p[:ffs]
-    @update_ffs = @ffs ? true : false
-
     # Initialize our frame number offset, and our pts offset.  These two are
     # modified by seek(), and used by decode_frame().
     @frame_offset = 0
@@ -305,6 +299,9 @@ class Libav::Stream::Video
     # caller is still using all the previous frames.
     raw_frame = @raw_queue.pop
 
+    # Let the reader know we're stomping on this frame
+    @reader.frame_dirty(raw_frame)
+
     # Call the decode function on our packet
     avcodec_get_frame_defaults(raw_frame.av_frame)
     rc = avcodec_decode_video2(@av_codec_ctx, raw_frame.av_frame,
@@ -321,39 +318,9 @@ class Libav::Stream::Video
     raw_frame.pts = raw_frame.av_frame[:opaque].get_int64(0) + @pts_offset
     raw_frame.pos = raw_frame.av_frame[:opaque].get_uint64(8)
 
-    # If we're updating FFS data, and the FFS data is empty, or this frame
-    # comes after the last frame in our array, we need to update the FFS data.
-    if @update_ffs and (@ffs.empty? or raw_frame.number > @ffs.last[0])
-
-      # The FFS data array is a list of all key frames we've encountered so far
-      # in this file.  Each record in the array contains:
-      #
-      #   [ frame number, frame pts, file offset if key frame ]
-      #
-      # The file offset field is only set for key frames.  Any non-key frame
-      # will have false for this value.
-      #
-      # At most, there will be one record for a non-key frame in our FFS data,
-      # and that record would be at the end of the list.
-      #
-      # The last entry in the FFS data list contains the last frame decoded.
-      #
-
-      # Pop the last entry off the list unless it's a key frame
-      @ffs.pop unless @ffs.empty? or @ffs.last[2]
-
-      # Now add this frame to the list
-      @ffs << [ raw_frame.number,
-                raw_frame.pts,
-                raw_frame.key_frame? && raw_frame.pos ]
-    end
-
-    # If we're scaling, or not buffering, return the raw frame now
-    return raw_frame unless @swscale_ctx or @buffer == 0
-
-    # We need to throw the raw_frame back on the queue now because we only have
-    # one for scaling, or when buffering is disabled.
-    @raw_queue.push raw_frame
+    # If we're scaling, or not buffering, throw the raw frame back on the
+    # queue; it's the only one we have
+    @raw_queue.push raw_frame if @swscale_ctx or @buffer == 0
 
     # If we're not scaling at this point, we need to return the raw frame to
     # the caller.  This is the non-buffering, non-scaling return point.
@@ -361,6 +328,9 @@ class Libav::Stream::Video
 
     # Let's grab a scaled frame from our queue
     scaled_frame = @scaled_queue.pop
+
+    # Let the reader know we're stomping on this frame
+    @reader.frame_dirty(scaled_frame)
 
     # scale the frame
     raw_frame.scale(:scale_ctx => @swscale_ctx,
@@ -375,6 +345,16 @@ class Libav::Stream::Video
   def release_frame(frame)
     @scaled_queue.push frame if @scaled_frames.include? frame
     @raw_queue.push frame if @raw_frames.include? frame
+  end
+
+  def rewind(count=nil)
+    @reader.rewind(count, :stream => self)
+  end
+
+  # This method will make the stream release all references to buffered frames.
+  # The buffers will be recreated the next time #decode_frame is called.
+  def release_all_frames
+    teardown
   end
 
   private
