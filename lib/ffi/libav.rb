@@ -2326,7 +2326,6 @@ module FFI::Libav
   end
   class AVIOContext < FFI::Struct
     layout(
-           :av_class, :pointer,
            :buffer, :pointer,
            :buffer_size, :int,
            :buf_ptr, :pointer,

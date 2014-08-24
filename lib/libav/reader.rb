@@ -46,6 +46,11 @@ class Libav::Reader
     rc = avformat_find_stream_info(@av_format_ctx, nil)
     raise RuntimeError, "av_find_stream_info() failed, rc=#{rc}" if rc < 0
 
+    # Fast frame seeking data; initialize it if @ffs is enabled, but no data
+    # has been provided.
+    @ffs = p[:ffs]
+    @ffs = Array.new(@av_format_ctx[:nb_streams]) {[]} if @ffs == true
+
     # Open all of our streams
     initialize_streams(p)
 
@@ -56,11 +61,6 @@ class Libav::Reader
     # Our packet for reading
     @packet = AVPacket.new
     av_init_packet(@packet)
-
-    # Fast frame seeking data; initialize it if @ffs is enabled, but no data
-    # has been provided.
-    @ffs = p[:ffs]
-    @ffs = [[default_stream.index]] if @ffs == true
 
     # output frame buffer; used for #rewind
     @output_frames = []
@@ -127,19 +127,6 @@ class Libav::Reader
       av_free_packet(@packet)
 
       next unless frame
-
-      # Let's update our ffs data XXX this is bad
-      # FFS Data is broken down as follows:
-      #   [ [stream index],
-      #     [frame number, pts, pos],   # entry for first key frame
-      #     [frame number, pts, pos],   # entry for second key frame
-      #     [frame number, pts, pos],   # entry for N-th key frame
-      #     [frame number, pts, pos, true],   # optional, last non-key frame
-      #   ]
-      if @ffs and (@ffs.empty? or frame.number > @ffs.last[0])
-        @ffs.pop unless @ffs.empty? or @ffs.last[2]
-        @ffs << [ frame.number, frame.pts, frame.key_frame? && frame.pos ]
-      end
 
       # Before yielding the frame, add it to our output list for rewind
       @output_frames.push frame
@@ -216,7 +203,8 @@ class Libav::Reader
   # by #rewind.  The supplied frame, and all preceding frames are dropped from
   # the output buffer.  This reduces how far we can rewind.
   def frame_dirty(frame)
-    true until @output_frames.shift == frame if @output_frames.include? frame
+    index = @output_frames.index(frame) or return
+    @output_frames.shift(index + 1)
   end
 
   private
@@ -241,10 +229,11 @@ class Libav::Reader
       case av_codec_ctx[:codec_type]
       when :video
         Libav::Stream::Video.new(:reader => self,
-                                  :av_stream => av_stream,
-                                  :pixel_format => p[:pixel_format],
-                                  :width => p[:width],
-                                  :height => p[:height])
+                                 :av_stream => av_stream,
+                                 :pixel_format => p[:pixel_format],
+                                 :width => p[:width],
+                                 :height => p[:height],
+                                 :ffs => @ffs && @ffs[av_stream[:index]])
       else
         Libav::Stream::Unsupported.new(:reader => self,
                                         :av_stream => av_stream)

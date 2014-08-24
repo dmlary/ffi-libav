@@ -86,105 +86,134 @@ module Libav::Stream
   # Last index of ffs data should contain last frame read.
   def seek(p={})
 
-    raise ArgumentError, "Invalid arguments" if
+    raise ArgumentError, ":pts, :frame, and :byte are mutually exclusive" if
       ([:byte, :frame, :pts] & p.keys).size != 1
-    raise ArgumentError, ":frame not supported without ffs data" if
-      p[:frame] and @ffs.nil?
 
-    # ffs will hold the ffs entry we used for performing the byte seek.  It is
-    # used after we call av_seek_frame() to adjust offsets.
-    ffs = nil
+    # Default seek arguments
+    flags = p[:backward] ? AVSEEK_FLAG_BACKWARD : 0
+    flags |= AVSEEK_FLAG_BYTE if p[:byte]
+    flags |= AVSEEK_FLAG_FRAME if p[:frame]
+    flags |= AVSEEK_FLAG_ANY if p[:any]
+    seek_args = [[p[:pts] || p[:frame] || p[:byte], flags]]
 
-    # If they passed in a :pts or :frame argument, and we have ffs data, use
-    # the ffs data to come up with a byte offset for seeking.
-    if p[:byte].nil? and @ffs
+    # If we have ffs data, and our target frame is within the data, replace
+    # seek_args with an array of arguments for seeking to each key frame
+    # preceding our target frame, in reverse-chronological order.  The idea is
+    # that sometimes libav seek puts us someplace strange.  If we start at the
+    # closest key frame to our target frame, and the work backwards in the
+    # stream, libav will eventually put us in a place where we can read to the
+    # target frame.
+    if @ffs and !@ffs.empty? and
+        (p[:frame] && p[:frame] <= @ffs.last[0] or
+         p[:pts]   && p[:pts]   <= @ffs.last[1] or
+         p[:byte]  && p[:byte]  <= @ffs.last[2])
 
-      # Find the last ffs entry before the requested location.  Since the ffs
-      # data contains the key frame information, we're finding the byte offset
-      # of the last key frame before the requested position.
-      index = @ffs.rindex do |data|
-        p[:frame] && data[0] < p[:frame] or p[:pts] && data[1] < p[:pts]
-      end
-
-      # If we found an entry, and it's not the last entry in our ffs data, we
-      # will pull the byte offset from the record and use that for seeking.  We
-      # also save off the ffs entry here for use after the call to
-      # av_seek_frame().
-      # Note that it is possible for index to be nil, in the case where the
-      # caller is looking for a frame before the first key frame in our ffs
-      # data.
-      if index and index < @ffs.size - 1
-        ffs = @ffs[index]
-        p[:byte] = ffs[2]
-      end
-
-      # If the byte isn't set by now, and the caller passed in a frame number,
-      # then we should raise an error saying we can't find the requested
-      # location.
-      raise RuntimeError, "Unable to find frame #{p[:frame]} in ffs data" if
-        p[:frame] and p[:byte].nil?
+      # Note that we set the flags to AVSEEK_FLAG_BACKWARD for each of our arg
+      # sets.  This is just because by observation the BACKWARD flag seems to
+      # give us better results regardless of the direction of our seek.
+      seek_args = @ffs.select do |data|
+          p[:frame] && data[0] < p[:frame] or
+            p[:pts] && data[1] < p[:pts] or
+            p[:byte] && data[2] && data[2] < p[:byte]
+        end.map { |d| [ d[1], AVSEEK_FLAG_BACKWARD, true ] }.reverse
 
     end
 
-    # Alright, if we have a :byte argument, we'll pass that to av_seek_frame(),
-    # otherwise we'll pass the :pts argument.  :frame would have already been
-    # resolved by this point.
+    # Disable ffs updating because we're about to seek.  If the seek ends up
+    # within our ffs data, it will be re-enabled.
+    @update_ffs = false
 
-    # Let's construct our flags to av_seek_frame
-    flags = 0
-    flags |= AVSEEK_FLAG_BYTE if p[:byte]
-    flags |= AVSEEK_FLAG_BACKWARD if p[:backward]
-    flags |= AVSEEK_FLAG_ANY if p[:any]
+    # We will fill this frame in the next loop, and use it after the loop is
+    # complete.
+    frame = nil
 
-    # Kick off our seek
-    rc = av_seek_frame(@reader.av_format_ctx, @av_stream[:index],
-                       p[:byte] || p[:pts], flags)
-    raise RuntimeError, "av_seek_frame() failed, %d" % rc if rc < 0
+    # Loop through each set of arguments provided.  Seek to the timestamp in
+    # the arguments and then verify that we haven't gone past our target.
+    seek_args.each do |ts, flags, ffs|
 
-    # If we performed an ffs seek, we need to enable ffs data updating, and if
-    # not we need to disable it.
-    @update_ffs = (ffs != nil)
+      # Flush the codec so we don't get buffered frames after the seek
+      avcodec_flush_buffers(@av_codec_ctx)
 
-    # We also need to clear the frame and pts offsets.  If this is a ffs seek,
-    # these will be re-set to their new values later.
-    @frame_offset = 0
-    @pts_offset = 0
+      # Kick off our seek
+      rc = avformat_seek_file(@reader.av_format_ctx, @av_stream[:index],
+                              ts, ts, ts, flags)
+      raise RuntimeError, "avformat_seek_file(#{ts}, #{flags.to_s(16)})" +
+        " failed, #{rc}" if rc < 0
 
-    # If this wasn't an ffs seek, return now
-    return true unless ffs
+      # If we performed an ffs seek, we need to enable ffs data updating, and
+      # if not we need to disable it.
+      @update_ffs = (ffs == true)
 
-    # This was an ffs seek, so we've just moved the file position to the start
-    # of the last key frame before the requested frame.  We need to now read
-    # this key frame, and adjust our frame and pts offset values to account for
-    # the codec not knowing where we really are.
-    frame = next_frame
-    @frame_offset = -1 * (frame.number - ffs[0])
-    @pts_offset = -1 * (frame.pts - ffs[1])
+      # We also need to clear the frame and pts offsets.  If this is a ffs
+      # seek, these will be re-set to their new values later.
+      @frame_offset = 0
+      @pts_offset = 0
+
+      # If this wasn't an ffs seek, we are done here.
+      return true unless ffs
+
+      # Grab the next frame, and see if it precedes, or is, our target frame.
+      # If no frame is returned, we hit EOF, so try seeking a little earlier.
+      frame = next_frame or next
+      frame.release
+
+      # Although the code is only needed in this loop when we're seeking by
+      # :frame, we're going to adjust our frame offset here.  It's a little
+      # slower, but less complicated overall.
+      #
+      # Find the ffs entry for this frame (it's guaranteed to be a key
+      # frame), and use that to adjust the number of the frame we just read.
+      #
+      # If we're unable to find a match in the ffs data, then we've gone past
+      # the end of the ffs data, and we should try another seek timestamp.
+      seek_ffs = @ffs.find { |f| f[1] == frame.pts } or next
+      raise RuntimeError, "ffs data mismatch: ffs #{seek_ffs}, " +
+          "frame [#{frame.number}, #{frame.pts}, #{frame.pos}]" if
+        frame.pos != seek_ffs[2]
+
+      # Adjust our frame offset, and use that to adjust our frame number
+      @frame_offset = -1 * (frame.number - seek_ffs[0])
+      frame.number += @frame_offset
+
+      # If this frame precedes or is our target frame, then the seek was
+      # successful, and we can break out of this loop.
+      break if p[:pts] && p[:pts] >= frame.pts or
+        p[:frame] && p[:frame] >= frame.number or
+        p[:byte] && p[:byte] >= frame.pos
+
+      # This frame was after our target frame, so ignore it.
+      frame = nil
+    end
+
+    # If we went through all the seek_args without finding a single frame
+    # before our target frame, throw an exception.
+    raise RuntimeError, "FFS seek failed" unless frame
+
+    # Rewind the frame so we can access it in the next loop
+    rewind(1)
+
+    # Also mark ffs as updating because we're within the known ffs data region.
+    @update_ffs = true
 
     # Now that we have corrected offsets, we need to read the next few frames
-    # until we encounter the requested frame or a frame after it (possible for
+    # until we encounter the target frame or a frame after it (possible for
     # pts values that are slightly off).
-    each_frame(:buffer => 2) do |frame|
-      break if p[:frame] and frame.number >= p[:frame]
-      break if p[:pts] and frame.pts >= p[:pts]
+    each_frame do |frame|
+      frame.release
+      break if p[:pts] && frame.pts >= p[:pts] or
+        p[:frame] && frame.number >= p[:frame] or
+        p[:byte] && frame.pos >= p[:byte]
     end
 
-    # XXX we need to make changes to the Stream to support buffering of frames
-    # during encode.  This is so that if we encounter a frame after our desired
-    # pts, we can return the frame before it, which would have to be buffered
-    # some place.  Buffer should be thread safe, implemented in Stream.
-    # decode_frame should know if we're buffering, if we're not it will manage
-    # push/pop on Queue, if we are buffering, caller will need to handle that
-    # behavior.
-    #
-    # We should buffer only the scaled frames.  If we buffered only the raw
-    # frames, we'd still need to provide a buffer of scaled frames for the
-    # caller to work on two frames at once.  So we wouldn't be able to just
-    # buffer the raw frames.
+    # Alright, let's rewind by one frame so the next call to #each_frame will
+    # yield the frame they requested.
+    rewind(1)
 
     return true
   end
 end
+
+
 
 class Libav::Stream::Video
   include Libav::Stream
@@ -198,6 +227,10 @@ class Libav::Stream::Video
     @width  = p[:widht]  || @av_codec_ctx[:width]
     @height = p[:height] || @av_codec_ctx[:height]
     @pixel_format = p[:pixel_format] || @av_codec_ctx[:pix_fmt]
+
+    # Our stream index info
+    @ffs = p[:ffs]
+    @update_ffs = @ffs.nil? == false
 
     # Our array and queues for raw frames and scaled frames
     @raw_frames = []
@@ -245,6 +278,7 @@ class Libav::Stream::Video
     # modified by seek(), and used by decode_frame().
     @frame_offset = 0
     @pts_offset = 0
+
   end
 
   def fps
@@ -317,6 +351,18 @@ class Libav::Stream::Video
     raw_frame.number = @av_codec_ctx[:frame_number].to_i + @frame_offset
     raw_frame.pts = raw_frame.av_frame[:opaque].get_int64(0) + @pts_offset
     raw_frame.pos = raw_frame.av_frame[:opaque].get_uint64(8)
+
+    # FFS Data is broken down as follows:
+    #   [ [frame number, pts, pos, true],   # entry for first key frame
+    #     [frame number, pts, pos, true],   # entry for second key frame
+    #     [frame number, pts, pos, true],   # entry for N-th key frame
+    #     [frame number, pts, pos, false],  # optional, last non-key frame
+    #   ]
+    if @update_ffs and (@ffs.empty? or raw_frame.number > @ffs.last[0])
+      @ffs.pop unless @ffs.empty? or @ffs.last[-1] == true
+      @ffs << [ raw_frame.number, raw_frame.pts,
+                raw_frame.pos, raw_frame.key_frame? ]
+    end
 
     # If we're scaling, or not buffering, throw the raw frame back on the
     # queue; it's the only one we have
