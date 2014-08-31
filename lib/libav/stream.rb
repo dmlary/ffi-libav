@@ -6,6 +6,11 @@ module Libav::Stream
   extend Forwardable
   include FFI::Libav
 
+  # Exception raised by Stream#seek when an AFS seek is unable to find the
+  # target frame.  This can happen for some codecs such as MPEG-TS when
+  # attempting to access the earliest frames.
+  class FrameNotFound < Exception; end
+
   attr_reader :reader, :av_stream, :av_codec_ctx, :buffer
   def_delegator :@av_stream, :[], :[]
 
@@ -39,14 +44,12 @@ module Libav::Stream
 
   # Loop through each frame of this stream
   #
-  # s.each_frame(:buffer => 10) do |frame|
-  #   queue_frame(frame)
-  # end
+  # Arguments:
+  #   [:buffer]   Number of frames to buffer
   #
-  # def queue_frame(f)
-  #   # process
-  #   f.finished
-  # end
+  # Note that when using the :buffer argument, the caller MUST call
+  # Frame#release when it is done processing a frame.
+  #
   def each_frame(opt={}, &block)
     @reader.each_frame(opt.merge({ :stream => index }), &block)
   end
@@ -78,12 +81,7 @@ module Libav::Stream
   #   seek :pts => 90218390
   #   seek :pos => 0
   #
-  # XXX Need some way to note which portion of the video file is covered by the
-  # ffs data.  This should include max frame number, max pts.  If the requested
-  # location is outside the region covered by the FFS data, we should let libav
-  # figure out where to go.
-  #
-  # Last index of ffs data should contain last frame read.
+  # Last index of afs data should contain last frame read.
   def seek(p={})
 
     raise ArgumentError, ":pts, :frame, and :byte are mutually exclusive" if
@@ -96,32 +94,34 @@ module Libav::Stream
     flags |= AVSEEK_FLAG_ANY if p[:any]
     seek_args = [[p[:pts] || p[:frame] || p[:byte], flags]]
 
-    # If we have ffs data, and our target frame is within the data, replace
+    # If we have afs data, and our target frame is within the data, replace
     # seek_args with an array of arguments for seeking to each key frame
     # preceding our target frame, in reverse-chronological order.  The idea is
     # that sometimes libav seek puts us someplace strange.  If we start at the
     # closest key frame to our target frame, and the work backwards in the
     # stream, libav will eventually put us in a place where we can read to the
     # target frame.
-    if @ffs and !@ffs.empty? and
-        (p[:frame] && p[:frame] <= @ffs.last[0] or
-         p[:pts]   && p[:pts]   <= @ffs.last[1] or
-         p[:byte]  && p[:byte]  <= @ffs.last[2])
+    if @afs and !@afs.empty? and
+        (p[:frame] && p[:frame] <= @afs.last[0] or
+         p[:pts]   && p[:pts]   <= @afs.last[1] or
+         p[:byte]  && p[:byte]  <= @afs.last[2])
 
       # Note that we set the flags to AVSEEK_FLAG_BACKWARD for each of our arg
       # sets.  This is just because by observation the BACKWARD flag seems to
       # give us better results regardless of the direction of our seek.
-      seek_args = @ffs.select do |data|
+      seek_args = @afs.select do |data|
           p[:frame] && data[0] < p[:frame] or
             p[:pts] && data[1] < p[:pts] or
             p[:byte] && data[2] && data[2] < p[:byte]
         end.map { |d| [ d[1], AVSEEK_FLAG_BACKWARD, true ] }.reverse
 
+      # Throw the seek 0 into the end of the list as a fall back
+      seek_args.push [0, AVSEEK_FLAG_BACKWARD, true]
     end
 
-    # Disable ffs updating because we're about to seek.  If the seek ends up
-    # within our ffs data, it will be re-enabled.
-    @update_ffs = false
+    # Disable afs updating because we're about to seek.  If the seek ends up
+    # within our afs data, it will be re-enabled.
+    @update_afs = false
 
     # We will fill this frame in the next loop, and use it after the loop is
     # complete.
@@ -129,7 +129,7 @@ module Libav::Stream
 
     # Loop through each set of arguments provided.  Seek to the timestamp in
     # the arguments and then verify that we haven't gone past our target.
-    seek_args.each do |ts, flags, ffs|
+    seek_args.each do |ts, flags, afs|
 
       # Flush the codec so we don't get buffered frames after the seek
       avcodec_flush_buffers(@av_codec_ctx)
@@ -140,17 +140,17 @@ module Libav::Stream
       raise RuntimeError, "avformat_seek_file(#{ts}, #{flags.to_s(16)})" +
         " failed, #{rc}" if rc < 0
 
-      # If we performed an ffs seek, we need to enable ffs data updating, and
+      # If we performed an afs seek, we need to enable afs data updating, and
       # if not we need to disable it.
-      @update_ffs = (ffs == true)
+      @update_afs = (afs == true)
 
-      # We also need to clear the frame and pts offsets.  If this is a ffs
+      # We also need to clear the frame and pts oafsets.  If this is a afs
       # seek, these will be re-set to their new values later.
-      @frame_offset = 0
-      @pts_offset = 0
+      @frame_oafset = 0
+      @pts_oafset = 0
 
-      # If this wasn't an ffs seek, we are done here.
-      return true unless ffs
+      # If this wasn't an afs seek, we are done here.
+      return true unless afs
 
       # Grab the next frame, and see if it precedes, or is, our target frame.
       # If no frame is returned, we hit EOF, so try seeking a little earlier.
@@ -158,22 +158,22 @@ module Libav::Stream
       frame.release
 
       # Although the code is only needed in this loop when we're seeking by
-      # :frame, we're going to adjust our frame offset here.  It's a little
+      # :frame, we're going to adjust our frame oafset here.  It's a little
       # slower, but less complicated overall.
       #
-      # Find the ffs entry for this frame (it's guaranteed to be a key
+      # Find the afs entry for this frame (it's guaranteed to be a key
       # frame), and use that to adjust the number of the frame we just read.
       #
-      # If we're unable to find a match in the ffs data, then we've gone past
-      # the end of the ffs data, and we should try another seek timestamp.
-      seek_ffs = @ffs.find { |f| f[1] == frame.pts } or next
-      raise RuntimeError, "ffs data mismatch: ffs #{seek_ffs}, " +
+      # If we're unable to find a match in the afs data, then we've gone past
+      # the end of the afs data, and we should try another seek timestamp.
+      seek_afs = @afs.find { |f| f[1] == frame.pts } or next
+      raise RuntimeError, "afs data mismatch: afs #{seek_afs}, " +
           "frame [#{frame.number}, #{frame.pts}, #{frame.pos}]" if
-        frame.pos != seek_ffs[2]
+        frame.pos != seek_afs[2]
 
-      # Adjust our frame offset, and use that to adjust our frame number
-      @frame_offset = -1 * (frame.number - seek_ffs[0])
-      frame.number += @frame_offset
+      # Adjust our frame oafset, and use that to adjust our frame number
+      @frame_oafset = -1 * (frame.number - seek_afs[0])
+      frame.number += @frame_oafset
 
       # If this frame precedes or is our target frame, then the seek was
       # successful, and we can break out of this loop.
@@ -187,15 +187,18 @@ module Libav::Stream
 
     # If we went through all the seek_args without finding a single frame
     # before our target frame, throw an exception.
-    raise RuntimeError, "FFS seek failed" unless frame
+    unless frame
+      mode = (p.keys & [:pts, :frame, :byte]).first
+      raise FrameNotFound, "Unable to find frame {%s: %d}" % [mode, p[mode]]
+    end
 
     # Rewind the frame so we can access it in the next loop
     rewind(1)
 
-    # Also mark ffs as updating because we're within the known ffs data region.
-    @update_ffs = true
+    # Also mark afs as updating because we're within the known afs data region.
+    @update_afs = true
 
-    # Now that we have corrected offsets, we need to read the next few frames
+    # Now that we have corrected oafsets, we need to read the next few frames
     # until we encounter the target frame or a frame after it (possible for
     # pts values that are slightly off).
     each_frame do |frame|
@@ -211,14 +214,16 @@ module Libav::Stream
 
     return true
   end
+
+  def format_afs(a)
+    "{frame: %d, pts: %d, pos: %d}" % [*a]
+  end
 end
-
-
 
 class Libav::Stream::Video
   include Libav::Stream
 
-  attr_reader :width, :height, :pixel_format, :reader, :ffs
+  attr_reader :width, :height, :pixel_format, :reader, :afs
 
   def initialize(p={})
     super(p)
@@ -229,8 +234,8 @@ class Libav::Stream::Video
     @pixel_format = p[:pixel_format] || @av_codec_ctx[:pix_fmt]
 
     # Our stream index info
-    @ffs = p[:ffs]
-    @update_ffs = @ffs.nil? == false
+    @afs = p[:afs]
+    @update_afs = @afs.nil? == false
 
     # Our array and queues for raw frames and scaled frames
     @raw_frames = []
@@ -274,10 +279,10 @@ class Libav::Stream::Video
         ret
       end
 
-    # Initialize our frame number offset, and our pts offset.  These two are
+    # Initialize our frame number oafset, and our pts oafset.  These two are
     # modified by seek(), and used by decode_frame().
-    @frame_offset = 0
-    @pts_offset = 0
+    @frame_oafset = 0
+    @pts_oafset = 0
 
   end
 
@@ -331,7 +336,7 @@ class Libav::Stream::Video
 
     # Grab our raw frame off the raw frames queue.  This will block if the
     # caller is still using all the previous frames.
-    raw_frame = @raw_queue.pop
+    raw_frame = @raw_queue.shift
 
     # Let the reader know we're stomping on this frame
     @reader.frame_dirty(raw_frame)
@@ -348,19 +353,19 @@ class Libav::Stream::Video
       return nil
     end
 
-    raw_frame.number = @av_codec_ctx[:frame_number].to_i + @frame_offset
-    raw_frame.pts = raw_frame.av_frame[:opaque].get_int64(0) + @pts_offset
+    raw_frame.number = @av_codec_ctx[:frame_number].to_i + @frame_oafset
+    raw_frame.pts = raw_frame.av_frame[:opaque].get_int64(0) + @pts_oafset
     raw_frame.pos = raw_frame.av_frame[:opaque].get_uint64(8)
 
-    # FFS Data is broken down as follows:
+    # AFS Data is broken down as follows:
     #   [ [frame number, pts, pos, true],   # entry for first key frame
     #     [frame number, pts, pos, true],   # entry for second key frame
     #     [frame number, pts, pos, true],   # entry for N-th key frame
     #     [frame number, pts, pos, false],  # optional, last non-key frame
     #   ]
-    if @update_ffs and (@ffs.empty? or raw_frame.number > @ffs.last[0])
-      @ffs.pop unless @ffs.empty? or @ffs.last[-1] == true
-      @ffs << [ raw_frame.number, raw_frame.pts,
+    if @update_afs and (@afs.empty? or raw_frame.number > @afs.last[0])
+      @afs.pop unless @afs.empty? or @afs.last[-1] == true
+      @afs << [ raw_frame.number, raw_frame.pts,
                 raw_frame.pos, raw_frame.key_frame? ]
     end
 
@@ -373,7 +378,7 @@ class Libav::Stream::Video
     return raw_frame unless @swscale_ctx
 
     # Let's grab a scaled frame from our queue
-    scaled_frame = @scaled_queue.pop
+    scaled_frame = @scaled_queue.shift
 
     # Let the reader know we're stomping on this frame
     @reader.frame_dirty(scaled_frame)

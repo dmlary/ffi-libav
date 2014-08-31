@@ -18,13 +18,13 @@ describe Libav::Stream::Video do
 
   subject(:test_video) { TEST_VIDEO }
 
-  # Generate a subset of ffs data for our test video.  We read the file until
-  # we see 50 entries in the ffs data.
-  r = Libav::Reader.new(TEST_VIDEO, :ffs => true)
-  r.each_frame { break if r.ffs.size == 25 }
-  ffs_data = r.ffs
+  # Generate a subset of afs data for our test video.  We read the file until
+  # we see 50 entries in the afs data.
+  r = Libav::Reader.new(TEST_VIDEO, :afs => true)
+  r.each_frame { break if r.afs.size == 25 }
+  afs_data = r.afs
   r = nil
-  subject(:ffs_data) { ffs_data }
+  subject(:afs_data) { afs_data }
 
   # Set up our reader and stream subjects
   subject(:reader) { Libav::Reader.new(test_video) }
@@ -69,8 +69,8 @@ describe Libav::Stream::Video do
         expect(frames).to eq (1..250).to_a
       end
 
-      it "adjusts the output frame number for the frame number offset" do
-        subject.instance_eval { @frame_offset = 100_000 }
+      it "adjusts the output frame number for the frame number oafset" do
+        subject.instance_eval { @frame_oafset = 100_000 }
         subject.each_frame(:buffer => buffer_size) do |frame|
           expect(frame.number).to be 100_001
           stream.release_frame(frame)
@@ -78,8 +78,8 @@ describe Libav::Stream::Video do
         end
       end
 
-      it "adjusts the output frame pts for the frame pts offset" do
-        subject.instance_eval { @pts_offset = 100_000_000 }
+      it "adjusts the output frame pts for the frame pts oafset" do
+        subject.instance_eval { @pts_oafset = 100_000_000 }
         subject.each_frame(:buffer => buffer_size) do |frame|
           # PTS of the first frame is 8
           expect(frame.pts).to be 100_000_008
@@ -462,15 +462,15 @@ describe Libav::Stream::Video do
     its(:type) { should be subject.av_stream[:codec][:codec_type] }
   end
 
-  context "with FFS disabled" do
+  context "with AFS disabled" do
     describe "#each_frame" do
-      it "does not update FFS data" do
+      it "does not update AFS data" do
         count = 0
         subject.each_frame do |f|
           count += 1 if f.key_frame
           break if count == 20
         end
-        expect(reader.ffs).to be nil
+        expect(reader.afs).to be nil
       end
     end
 
@@ -498,44 +498,44 @@ describe Libav::Stream::Video do
     end
   end
 
-  context "with FFS enabled" do
-    subject(:reader) { Libav::Reader.new(test_video, :ffs => true) }
+  context "with AFS enabled" do
+    subject(:reader) { Libav::Reader.new(test_video, :afs => true) }
     subject(:stream) { reader.streams.find { |stream| stream.type == :video } }
 
-    its(:ffs) { should be_empty }
+    its(:afs) { should be_empty }
 
     describe "#each_frame" do
       context "before seeking" do
-        it "updates the ffs data for the last frame read" do
+        it "updates the afs data for the last frame read" do
           count = 0
           stream.each_frame do |frame|
             count += 1
-            expect(stream.ffs.last[0]).to eq frame.number
-            expect(stream.ffs.last[1]).to eq frame.pts
-            expect(stream.ffs.last[2]).to eq frame.pos
-            expect(stream.ffs.last[3]).to eq frame.key_frame?
+            expect(stream.afs.last[0]).to eq frame.number
+            expect(stream.afs.last[1]).to eq frame.pts
+            expect(stream.afs.last[2]).to eq frame.pos
+            expect(stream.afs.last[3]).to eq frame.key_frame?
             break if count == 200
           end
         end
 
-        it "only preserves ffs data for key frames" do
+        it "only preserves afs data for key frames" do
           count = 0
           stream.each_frame do |frame|
             next unless frame.key_frame?
             count += 1
             break if count == 20
           end
-          expect(stream.ffs.size).to eq count
+          expect(stream.afs.size).to eq count
         end
       end
 
       context "after seeking" do
         before { stream.seek(:byte => 100_000) }
 
-        it "does not update ffs data for key frames read" do
+        it "does not update afs data for key frames read" do
           count = 0
           stream.each_frame { |f| count += 1 if f.key_frame?; count < 20 }
-          expect(stream.ffs).to eq []
+          expect(stream.afs).to eq []
         end
         it "does not update last frame data" do
           count = 0
@@ -543,35 +543,35 @@ describe Libav::Stream::Video do
             count += 1
             break if count == 100
           end
-          expect(stream.ffs).to be_empty
+          expect(stream.afs).to be_empty
         end
       end
     end
   end
 
-  context "with FFS data provided" do
-    subject(:reader) { Libav::Reader.new(test_video, :ffs => ffs_data) }
+  context "with AFS data provided" do
+    subject(:reader) { Libav::Reader.new(test_video, :afs => afs_data) }
     subject(:stream) { reader.streams.find { |stream| stream.type == :video } }
 
-    its(:ffs) { should be ffs_data[stream.index] }
+    its(:afs) { should be afs_data[stream.index] }
 
     describe "#each_frame" do
-      it "does not update ffs for known frames" do
+      it "does not update afs for known frames" do
         count = 0
         stream.each_frame { |f| break if (count += 1) == 100 }
-        expect(stream.ffs).to eq ffs_data[stream.index]
+        expect(stream.afs).to eq afs_data[stream.index]
       end
 
-      it "updates ffs data for frames beyond existing ffs data" do
-        stream.seek(:frame => stream.ffs[-1][0])
+      it "updates afs data for frames beyond existing afs data" do
+        stream.seek(:frame => stream.afs[-1][0])
 
         count = 0
         stream.each_frame do |frame|
           count += 1
-          expect(stream.ffs.last[0]).to eq frame.number
-          expect(stream.ffs.last[1]).to eq frame.pts
-          expect(stream.ffs.last[2]).to eq frame.pos
-          expect(stream.ffs.last[3]).to eq frame.key_frame?
+          expect(stream.afs.last[0]).to eq frame.number
+          expect(stream.afs.last[1]).to eq frame.pts
+          expect(stream.afs.last[2]).to eq frame.pos
+          expect(stream.afs.last[3]).to eq frame.key_frame?
           break if count == 200
         end
       end
@@ -579,7 +579,7 @@ describe Libav::Stream::Video do
 
     describe "#seek" do
       shared_examples "frame accurate seek" do
-        context "within ffs data" do
+        context "within afs data" do
           it "can find a key frame by pts" do
             stream.seek(:pts => 22)
             frame = stream.next_frame
@@ -634,19 +634,28 @@ describe Libav::Stream::Video do
             expect(frame.pts).to eq 28
             expect(frame.pos).to eq 224996
           end
+
+          it "can reach the first key frame" do
+            stream.seek :frame => 1
+            frame = stream.next_frame
+            expect(frame.number).to eq 1
+            expect(frame.pts).to eq 8
+            expect(frame.pos).to eq 46860
+            expect(frame.crc.to_s(16)).to eq "5aaa5831"
+          end
         end
 
-        context "outside of ffs data" do
-          # Seek past the end of our ffs data
-          before { stream.seek :frame => stream.ffs.last[0] + 1 }
+        context "outside of afs data" do
+          # Seek past the end of our afs data
+          before { stream.seek :frame => stream.afs.last[0] + 1 }
 
-          it "disables ffs updates" do
-            expect(stream.instance_eval { @update_ffs }).to be false
+          it "disables afs updates" do
+            expect(stream.instance_eval { @update_afs }).to be false
           end
 
-          it "re-enables ffs updates" do
+          it "re-enables afs updates" do
             stream.seek :frame => 100
-            expect(stream.instance_eval { @update_ffs }).to be true
+            expect(stream.instance_eval { @update_afs }).to be true
           end
         end
       end
