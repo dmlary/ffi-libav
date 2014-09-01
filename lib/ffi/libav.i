@@ -5,12 +5,13 @@ require 'ffi'
 module FFI::Libav
   extend FFI::Library
 
-  ffi_lib [ "libavutil.so.51", "libavutil.51.dylib" ]
+  ffi_lib [ "libavutil.so.52", "libavutil.52.dylib" ]
 
 %}
 
 #define INT64_C(v) v
 #define av_const
+#define av_always_inline inline
 %include "libavutil/avutil.h"
 %include "libavutil/pixfmt.h"
 %include "libavutil/rational.h"
@@ -20,7 +21,7 @@ module FFI::Libav
 
 %{
 
-  ffi_lib [ "libavcodec.so.53", "libavcodec.53.dylib" ]
+  ffi_lib [ "libavcodec.so.54", "libavcodec.54.dylib" ]
 
 %}
 
@@ -34,7 +35,7 @@ module FFI::Libav
 
 %{
 
-  ffi_lib [ "libavformat.so.53", "libavformat.53.dylib" ]
+  ffi_lib [ "libavformat.so.54", "libavformat.54.dylib" ]
 
 %}
 

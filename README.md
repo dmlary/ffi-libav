@@ -1,6 +1,16 @@
 # FFI::Libav
 
-Ruby FFI bindings and wrappers for Libav libraries, version 0.8.6.
+Ruby FFI bindings and wrappers for Libav libraries, version 9.16.
+
+Different versions of this gem support different versions of libav.  The
+following is a table that maps ffi-libav gem version to the libav version it
+requires.
+
+| ffi-libav gem | libav |
+|:-:|:-:|
+|v0.1|v0.8.6|
+|v0.2|v0.8.6|
+|v0.3|v9.16|
 
 ## Installation
 

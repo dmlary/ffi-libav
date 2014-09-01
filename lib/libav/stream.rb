@@ -287,7 +287,10 @@ class Libav::Stream::Video
   end
 
   def fps
-    @av_stream[:r_frame_rate].to_f
+    fps = @av_stream[:r_frame_rate].to_f
+    # Some codecs don't set frame rate, so we'll use 1/timebase
+    fps = 1/@av_stream[:time_base].to_f if fps.nan?
+    fps
   end
 
   # Set the +width+ of the frames returned by +decode_frame+
@@ -447,12 +450,12 @@ class Libav::Stream::Video
       end
 
       # Let's throw together a scaling context
-      @swscale_ctx = sws_getContext(@av_codec_ctx[:width],
-                                    @av_codec_ctx[:height],
-                                    @av_codec_ctx[:pix_fmt],
-                                    @width, @height, @pixel_format,
-                                    SWS_BICUBIC, nil, nil, nil) or
-        raise NoMemoryError, "sws_getContext() failed"
+      @swscale_ctx = sws_getCachedContext(nil, @av_codec_ctx[:width],
+                                          @av_codec_ctx[:height],
+                                          @av_codec_ctx[:pix_fmt], @width,
+                                          @height, @pixel_format, SWS_BICUBIC,
+                                          nil, nil, nil) or
+        raise NoMemoryError, "sws_getCachedContext() failed"
     end
 
     @decode_ready = true

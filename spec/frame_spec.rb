@@ -252,11 +252,11 @@ describe Libav::Frame, "#scale" do
       frame
     end
     subject do
-      ctx = FFI::Libav.sws_getContext(src_frame.width, src_frame.height,
-                                      src_frame.pixel_format,
-                                      100, 100, :gray8,
-                                      FFI::Libav::SWS_BICUBIC,
-                                      nil, nil, nil)
+      ctx = FFI::Libav.sws_getCachedContext(nil, src_frame.width,
+                                            src_frame.height,
+                                            src_frame.pixel_format, 100, 100,
+                                            :gray8, FFI::Libav::SWS_BICUBIC,
+                                            nil, nil, nil)
       src_frame.scale(:scale_ctx => ctx, :output_frame => dst_frame)
     end
     its(:class) { should be(Libav::Frame::Video) }

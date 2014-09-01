@@ -89,10 +89,10 @@ class Libav::Frame::Video
                      :pixel_format => p[:pixel_format] || pixel_format,
                      :stream => stream)
     ctx = p[:scale_ctx] ||
-      sws_getContext(width, height, pixel_format,
-                     out.width, out.height, out.pixel_format,
-                     SWS_BICUBIC, nil, nil, nil)
-    raise NoMemoryError, "sws_getContext() failed" if ctx.nil?
+      sws_getCachedContext(nil, width, height, pixel_format,
+                           out.width, out.height, out.pixel_format,
+                           SWS_BICUBIC, nil, nil, nil)
+    raise NoMemoryError, "sws_getCachedContext() failed" if ctx.nil?
 
     # Scale the image
     rc = sws_scale(ctx, data, linesize, 0, height, out.data, out.linesize)

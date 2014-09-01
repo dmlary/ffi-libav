@@ -1,7 +1,7 @@
 require "bundler/gem_tasks"
 
 rule ".rb" => ".xml" do |t|
-  sh "../ffi-swig-generator/bin/ffi-gen #{t.prerequisites.first} #{t.name}"
+  sh "bundle exec ffi-gen #{t.prerequisites.first} #{t.name}"
 end
 
 rule ".xml" => ".i" do |t|
