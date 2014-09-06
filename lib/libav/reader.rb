@@ -8,6 +8,11 @@ class Libav::Reader
   attr_reader :filename, :streams, :av_format_ctx, :afs
   def_delegator :@av_format_ctx, :[], :[]
 
+  # Open a Libav::Reader and yield it to the caller
+  def self.open(filename, p={}, &block)
+    yield new(filename, p)
+  end
+
   # Initialize a Reader for a specific file
   #
   # ==== Attributes
