@@ -15,6 +15,14 @@ module Libav
     FFI::Libav.av_register_all
     @@registered_all = true
   end
+
+  def self.log_level=(v)
+    FFI::Libav.av_log_set_level v
+  end
+
+  def self.log_level
+    FFI::Libav.av_log_get_level
+  end
 end
 
 class String

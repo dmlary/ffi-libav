@@ -18,6 +18,7 @@ module FFI::Libav
 %include "libavutil/mem.h"
 %include "libavutil/attributes.h"
 %include "libavutil/mathematics.h"
+%include "libavutil/log.h"
 
 %{
 

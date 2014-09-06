@@ -329,6 +329,29 @@ module FFI::Libav
   attach_function :av_compare_ts, :av_compare_ts, [ :int64, AVRational.by_value, :int64, AVRational.by_value ], :int
   attach_function :av_compare_mod, :av_compare_mod, [ :uint64, :uint64, :uint64 ], :int64
 
+  AV_LOG_QUIET = -8
+  AV_LOG_PANIC = 0
+  AV_LOG_FATAL = 8
+  AV_LOG_ERROR = 16
+  AV_LOG_WARNING = 24
+  AV_LOG_INFO = 32
+  AV_LOG_VERBOSE = 40
+  AV_LOG_DEBUG = 48
+  AVLogLevel = enum :AVLogLevel, [
+    :quiet, -8,
+    :panic, 0,
+    :fatal, 8,
+    :error, 16,
+    :warning, 24,
+    :info, 32,
+    :debug, 48,
+  ]
+  attach_function :av_log, :av_log, [ :pointer, :int, :string, :varargs ], :void
+  attach_function :av_log_get_level, :av_log_get_level, [  ], :AVLogLevel
+  attach_function :av_log_set_level, :av_log_set_level, [ :AVLogLevel ], :void
+  attach_function :av_default_item_name, :av_default_item_name, [ :pointer ], :string
+  AV_LOG_SKIP_REPEATED = 1
+  attach_function :av_log_set_flags, :av_log_set_flags, [ :int ], :void
 
   ffi_lib [ "libavcodec.so.54", "libavcodec.54.dylib" ]
 
