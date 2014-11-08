@@ -1,7 +1,5 @@
-require 'ffi-libav'
-require 'yaml'
-require 'timeout'
-require 'zlib'
+# encoding: UTF-8
+require 'spec_helper.rb'
 
 # For testing
 class Libav::Frame::Video

@@ -1,4 +1,5 @@
-require 'ffi-libav'
+# encoding: UTF-8
+require 'spec_helper.rb'
 include Libav
 
 describe Frame::Video, ".new" do
@@ -7,10 +8,10 @@ describe Frame::Video, ".new" do
       Frame::Video.new :width => 1200, :height => 100,
                        :pixel_format => :gray8
     end
-    its(:width) { should eq(1200) }
-    its(:height) { should eq(100) }
-    its(:pixel_format) { should eq(:gray8) }
-    its("data.first.address") { should_not eq(0x0) }
+    its(:width) { is_expected.to eq(1200) }
+    its(:height) { is_expected.to eq(100) }
+    its(:pixel_format) { is_expected.to eq(:gray8) }
+    its("data.first.address") { is_expected.to_not eq(0x0) }
   end
 
   context 'when not allocating, with attributes' do
@@ -18,24 +19,24 @@ describe Frame::Video, ".new" do
       Frame::Video.new :width => 1200, :height => 100,
                        :pixel_format => :gray8, :alloc => false
     end
-    its(:width) { should eq(1200) }
-    its(:height) { should eq(100) }
-    its(:pixel_format) { should eq(:gray8) }
-    its("data.first.address") { should eq(0x0) }
+    its(:width) { is_expected.to eq(1200) }
+    its(:height) { is_expected.to eq(100) }
+    its(:pixel_format) { is_expected.to eq(:gray8) }
+    its("data.first.address") { is_expected.to eq(0x0) }
   end
 
   context 'when allocating, with :stream' do
     subject do
       stream = Object.new
-      stream.stub(:width) { 1200 }
-      stream.stub(:height) { 100 }
-      stream.stub(:pixel_format) { :gray8 }
+      allow(stream).to receive(:width) { 1200 }
+      allow(stream).to receive(:height) { 100 }
+      allow(stream).to receive(:pixel_format) { :gray8 }
       Frame::Video.new :stream => stream
     end
-    its(:width) { should eq(1200) }
-    its(:height) { should eq(100) }
-    its(:pixel_format) { should eq(:gray8) }
-    its("data.first.address") { should_not eq(0x0) }
+    its(:width) { is_expected.to eq(1200) }
+    its(:height) { is_expected.to eq(100) }
+    its(:pixel_format) { is_expected.to eq(:gray8) }
+    its("data.first.address") { is_expected.to_not eq(0x0) }
   end
 end
 
@@ -47,7 +48,7 @@ describe Frame::Video do
 
   describe "#pts=" do
     before { subject.pts = 0xFEEDFACE }
-    its(:pts) { should eq(0xFEEDFACE) }
+    its(:pts) { is_expected.to eq(0xFEEDFACE) }
     it "should set av_frame[:pts]" do
       expect(subject.av_frame[:pts]).to eq(0xFEEDFACE)
     end
@@ -56,24 +57,24 @@ describe Frame::Video do
   describe "#key_frame?" do
     context 'when av_frame[:key_frame] == 1' do
       before { subject.av_frame[:key_frame] = 1 }
-      its(:key_frame?) { should eq(true) }
+      its(:key_frame?) { is_expected.to eq(true) }
     end
 
     context 'when av_frame[:key_frame] == 0' do
       before { subject.av_frame[:key_frame] = 0 }
-      its(:key_frame?) { should eq(false) }
+      its(:key_frame?) { is_expected.to eq(false) }
     end
 
     context 'when av_frame[:key_frame] == 0xBEEF' do
       before { subject.key_frame = 0xBEEF }
-      its(:key_frame?) { should eq(true) }
+      its(:key_frame?) { is_expected.to eq(true) }
     end
   end
 
   describe "#key_frame=" do
     context 'when frame.key_frame=(1)' do
       before { subject.key_frame = 1 }
-      its(:key_frame?) { should eq(true) }
+      its(:key_frame?) { is_expected.to eq(true) }
       it "should set av_frame[:key_frame]" do
         expect(subject.av_frame[:key_frame]).to eq(1)
       end
@@ -81,7 +82,7 @@ describe Frame::Video do
 
     context 'when frame.key_frame=(0)' do
       before { subject.key_frame = 0 }
-      its(:key_frame?) { should eq(false) }
+      its(:key_frame?) { is_expected.to eq(false) }
       it "should set av_frame[:key_frame]" do
         expect(subject.av_frame[:key_frame]).to eq(0)
       end
@@ -89,7 +90,7 @@ describe Frame::Video do
 
     context 'when frame.key_frame=(0xBEEF)' do
       before { subject.key_frame = 0xBEEF }
-      its(:key_frame?) { should eq(true) }
+      its(:key_frame?) { is_expected.to eq(true) }
       it "should set av_frame[:key_frame]" do
         expect(subject.av_frame[:key_frame]).to eq(0xBEEF)
       end
@@ -98,7 +99,7 @@ describe Frame::Video do
 
   describe "#pixel_format" do
     before { subject.av_frame[:format] = :rgba }
-    its(:pixel_format) { should eq(:rgba) }
+    its(:pixel_format) { is_expected.to eq(:rgba) }
   end
 
   describe "#[]" do
@@ -110,19 +111,19 @@ describe Frame::Video do
   end
 
   describe "#av_frame" do
-    its('av_frame.class') { should be FFI::Libav::AVFrame }
+    its('av_frame.class') { is_expected.to be FFI::Libav::AVFrame }
   end
 
   describe "#timestamp" do
     subject do
       # fake a stream
       stream = Object.new
-      stream.stub(:width) { 1200 }
-      stream.stub(:height) { 100 }
-      stream.stub(:pixel_format) { :gray8 }
+      allow(stream).to receive(:width) { 1200 }
+      allow(stream).to receive(:height) { 100 }
+      allow(stream).to receive(:pixel_format) { :gray8 }
 
       # We stub out the [] method to return the :time_base for 24 FPS
-      stream.stub(:[]) do
+      allow(stream).to receive(:[]) do
         f = FFI::Libav::AVRational.new
         f[:num] = 1
         f[:den] = 24
@@ -134,17 +135,17 @@ describe Frame::Video do
       frame.pts = 25
       frame
     end
-    its(:timestamp) { should eq(1/24.0 * 25) }
+    its(:timestamp) { is_expected.to eq(1/24.0 * 25) }
   end
 
   describe "#release" do
     it "calls stream.release_frame(self)" do
       stream = Object.new
-      stream.stub(:width) { 1200 }
-      stream.stub(:height) { 100 }
-      stream.stub(:pixel_format) { :gray8 }
-      stream.stub(:release_frame) { @released = true }
-      stream.stub(:released) { @released }
+      allow(stream).to receive(:width) { 1200 }
+      allow(stream).to receive(:height) { 100 }
+      allow(stream).to receive(:pixel_format) { :gray8 }
+      allow(stream).to receive(:release_frame) { @released = true }
+      allow(stream).to receive(:released) { @released }
       frame = Frame::Video.new :stream => stream
 
       expect(stream.released).to be nil
@@ -177,7 +178,7 @@ describe Libav::Frame, "#scale" do
     # row.
     pad_length = frame.linesize[0] - frame.width
 
-    pattern = [ "\xff", "\x00", "\xff", "\x00" ].map { |c| c * col_width }
+    pattern = [ 0xFF.chr, 0x00.chr, 0xFF.chr, 0x00.chr ].map { |c| c * col_width }
 
     rows.times do |row|
       # figure out the contents of a single line in our row
@@ -199,26 +200,26 @@ describe Libav::Frame, "#scale" do
 
   context 'scale(:width => 100, :height => 100)' do
     subject { src_frame.scale(:width => 100, :height => 100) }
-    its(:class) { should be(Libav::Frame::Video) }
-    its(:__id__) { should_not be src_frame.__id__ }
-    its(:width) { should be(100) }
-    its(:height) { should be(100) }
-    its(:pixel_format) { should be(src_frame.pixel_format) }
-    its(:pts) { should be src_frame.pts }
-    its(:number) { should be src_frame.number }
-    its(:key_frame?) { should be src_frame.key_frame? }
+    its(:class) { is_expected.to eq(Libav::Frame::Video) }
+    its(:__id__) { is_expected.to_not eq src_frame.__id__ }
+    its(:width) { is_expected.to eq(100) }
+    its(:height) { is_expected.to eq(100) }
+    its(:pixel_format) { is_expected.to eq(src_frame.pixel_format) }
+    its(:pts) { is_expected.to eq src_frame.pts }
+    its(:number) { is_expected.to eq src_frame.number }
+    its(:key_frame?) { is_expected.to eq src_frame.key_frame? }
   end
 
   context 'scale(:pixel_format => rgba)' do
     subject { src_frame.scale(:pixel_format => :rgba) }
-    its(:class) { should be(Libav::Frame::Video) }
-    its(:__id__) { should_not be src_frame.__id__ }
-    its(:width) { should be src_frame.width }
-    its(:height) { should be src_frame.height }
-    its(:pixel_format) { should be :rgba }
-    its(:pts) { should be src_frame.pts }
-    its(:number) { should be src_frame.number }
-    its(:key_frame?) { should be src_frame.key_frame? }
+    its(:class) { is_expected.to be(Libav::Frame::Video) }
+    its(:__id__) { is_expected.to_not eq src_frame.__id__ }
+    its(:width) { is_expected.to eq src_frame.width }
+    its(:height) { is_expected.to eq src_frame.height }
+    its(:pixel_format) { is_expected.to eq :rgba }
+    its(:pts) { is_expected.to eq src_frame.pts }
+    its(:number) { is_expected.to eq src_frame.number }
+    its(:key_frame?) { is_expected.to eq src_frame.key_frame? }
   end
 
   context 'scale(:output_frame => frame)' do
@@ -228,14 +229,14 @@ describe Libav::Frame, "#scale" do
     subject do
       src_frame.scale(:output_frame => dst_frame)
     end
-    its(:class) { should be(Libav::Frame::Video) }
-    its(:__id__) { should be dst_frame.__id__ }
-    its(:width) { should be 120 }
-    its(:height) { should be 120 }
-    its(:pixel_format) { should be :rgba }
-    its(:pts) { should be src_frame.pts }
-    its(:number) { should be src_frame.number }
-    its(:key_frame?) { should be src_frame.key_frame? }
+    its(:class) { is_expected.to be(Libav::Frame::Video) }
+    its(:__id__) { is_expected.to eq dst_frame.__id__ }
+    its(:width) { is_expected.to eq 120 }
+    its(:height) { is_expected.to eq 120 }
+    its(:pixel_format) { is_expected.to eq :rgba }
+    its(:pts) { is_expected.to eq src_frame.pts }
+    its(:number) { is_expected.to eq src_frame.number }
+    its(:key_frame?) { is_expected.to eq src_frame.key_frame? }
   end
 
   context 'scale(:scale_ctx => ctx)' do
@@ -244,11 +245,11 @@ describe Libav::Frame, "#scale" do
     # going to create a 150x150 dest frame, but create the scaling context to
     # be 100x100.  We also set all the pixels in the dest frame to 0xBE.  To
     # verify that we're using the scaling context, we make sure that the tail
-    # of frame.data[0][100..149] match /\xBE+$/
+    # of frame.data[0][100..149] to eq(0xBE*50)
     subject(:dst_frame) do
       frame = Frame::Video.new :width => 150, :height => 150,
                                :pixel_format => :gray8
-      frame.data[0].write_bytes("\xBE" * 150 * frame.linesize[0])
+      frame.data[0].write_bytes(0xBE.chr * 150 * frame.linesize[0])
       frame
     end
     subject do
@@ -259,16 +260,16 @@ describe Libav::Frame, "#scale" do
                                             nil, nil, nil)
       src_frame.scale(:scale_ctx => ctx, :output_frame => dst_frame)
     end
-    its(:class) { should be(Libav::Frame::Video) }
-    its(:__id__) { should_not be src_frame.__id__ }
-    its(:pts) { should be src_frame.pts }
-    its(:number) { should be src_frame.number }
-    its(:key_frame?) { should be src_frame.key_frame? }
+    its(:class) { is_expected.to be(Libav::Frame::Video) }
+    its(:__id__) { is_expected.to_not eq src_frame.__id__ }
+    its(:pts) { is_expected.to eq src_frame.pts }
+    its(:number) { is_expected.to eq src_frame.number }
+    its(:key_frame?) { is_expected.to eq src_frame.key_frame? }
     it "contains a 100x100 image" do
       linesize = subject.linesize[0]
-      expect(subject.data[0].get_bytes(100, 50)).to match(/\xBE+$/)
-      expect(subject.data[0].get_bytes(linesize * 99, 100)).to_not match(/^\xBE+$/)
-      expect(subject.data[0].get_bytes(linesize * 100, 100)).to match(/^\xBE+$/)
+      expect(subject.data[0].get_bytes(100, 50)).to eq(0xBE.chr * 50)
+      expect(subject.data[0].get_bytes(linesize * 99, 100)).to_not eq(0xBE.chr * 100)
+      expect(subject.data[0].get_bytes(linesize * 100, 100)).to eq(0xBE.chr * 100)
     end
   end
 end
