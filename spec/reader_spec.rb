@@ -1,5 +1,5 @@
-require 'ffi-libav'
-require 'yaml'
+# encoding: UTF-8
+require 'spec_helper.rb'
 
 describe Libav::Reader do
   # This is the fast frame seek data for the test video.  It is used for the
@@ -22,9 +22,7 @@ describe Libav::Reader do
 
   describe "::open" do
     it "will yield a Libav::Reader" do
-      Libav::Reader.open(test_video) do |reader|
-        reader
-      end.class.should be Libav::Reader
+      expect { |r| Libav::Reader.open(test_video, &r) }.to yield_with_args(Libav::Reader)
     end
   end
 end
