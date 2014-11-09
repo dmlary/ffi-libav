@@ -123,3 +123,44 @@ class Libav::Frame::Video
   end
 
 end
+
+class Libav::Frame::Audio
+  extend Forwardable
+  include FFI::Libav
+
+  attr_reader :av_frame, :stream
+  attr_accessor :number, :pos
+  def_delegator :@av_frame, :[], :[]
+
+  # Initialize a new frame.
+  #
+  # ==== Options
+  # * +:stream+ - Libav::Stream this frame belongs to
+  #
+  def initialize(p={})
+    @av_frame = AVFrame.new
+    @stream = p[:stream]
+  end
+
+  # define a few reader methods to read the underlying AVFrame
+  %w{ data linesize nb_samples }.each do |field|
+    define_method(field) { @av_frame[field.to_sym] }
+  end
+
+  # define a few accessor methods to read/write fields in the AVFrame
+  %w{ pts }.each do |field|
+    define_method(field) { @av_frame[field.to_sym] }
+    define_method("#{field}=") { |v| @av_frame[field.to_sym] = v }
+  end
+
+  # Get the presentation timestamp for this frame in fractional seconds
+  def timestamp
+    pts * @stream[:time_base].to_f
+  end
+
+  # Release frame back to buffered stream for re-use
+  def release
+    stream.release_frame(self)
+  end
+
+end

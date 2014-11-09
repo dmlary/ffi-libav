@@ -474,6 +474,118 @@ class Libav::Stream::Video
   end
 end
 
+class Libav::Stream::Audio
+  include Libav::Stream
+
+  attr_reader :sample_rate, :channels, :sample_format
+
+  def initialize(p={})
+    super(p)
+
+    @sample_rate  = @av_codec_ctx[:sample_rate]
+    @channels = @av_codec_ctx[:channels]
+    @sample_format = @av_codec_ctx[:sample_fmt]
+
+    # Our array and queues for raw frames and scaled frames
+    @raw_frames = []
+    @raw_queue = Queue.new
+
+    # Number of frames to buffer (default is disabled, 0)
+    @buffer = 0
+
+    # When this is set to true when all raw have been set up
+    # by setup().
+    @decode_ready = false
+
+    # Pointer used to denote that decode frame was successful
+    @frame_finished = FFI::MemoryPointer.new :int
+
+  end
+
+  # Set the buffer size
+  def buffer=(v)
+    return if v == @buffer
+    @buffer = v
+    teardown
+  end
+
+  # Called by Libav::Reader.each_frame to decode each frame
+  def decode_frame(packet)
+    setup unless @decode_ready
+
+    # Grab our raw frame off the raw frames queue.  This will block if the
+    # caller is still using all the previous frames.
+    raw_frame = @raw_queue.shift
+
+    # Let the reader know we're stomping on this frame
+    @reader.frame_dirty(raw_frame)
+
+    # Call the decode function on our packet
+    avcodec_get_frame_defaults(raw_frame.av_frame)
+    rc = avcodec_decode_audio4(@av_codec_ctx, raw_frame.av_frame,
+                               @frame_finished, packet)
+
+    # Now, if we didn't get a frame, for one reason or another, let's throw the
+    # raw frame back on our queue.
+    if rc < 0 or @frame_finished.read_int == 0
+      @raw_queue.push raw_frame
+      return nil
+    end
+
+    raw_frame.number = @av_codec_ctx[:frame_number].to_i
+
+    # If we're not buffering, throw the raw frame back on the
+    # queue; it's the only one we have
+    @raw_queue.push raw_frame if @buffer == 0
+    raw_frame
+  end
+
+  def release_frame(frame)
+    @raw_queue.push frame if @raw_frames.include? frame
+  end
+
+  def rewind(count=nil)
+    @reader.rewind(count, :stream => self)
+  end
+
+  # This method will make the stream release all references to buffered frames.
+  # The buffers will be recreated the next time #decode_frame is called.
+  def release_all_frames
+    teardown
+  end
+
+  private
+
+  # Initialize our raw and scaled frames along with our scaling context
+  def setup
+    return if @decode_ready
+
+    # call teardown() now just to make sure everything is released
+    teardown
+
+    # If @buffer is set to zero, we aren't buffering, but we will need one raw
+    # frame
+    buffer = @buffer
+    buffer += 1 if buffer == 0
+
+    # Let's allocate our raw frames.
+    buffer.times do
+      frame = Libav::Frame::Audio.new :stream => self
+      @raw_frames.push frame
+      @raw_queue.push frame
+    end
+    @decode_ready = true
+  end
+
+  # Release all references to our frames (raw & scaled), and free our scaling
+  # context.
+  def teardown
+    @raw_frames.clear
+    @raw_queue.clear
+    @decode_ready = false
+  end
+end
+
 class Libav::Stream::Unsupported
   include Libav::Stream
 

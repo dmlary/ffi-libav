@@ -239,6 +239,9 @@ class Libav::Reader
                                  :width => p[:width],
                                  :height => p[:height],
                                  :afs => @afs && @afs[av_stream[:index]])
+      when :audio
+        Libav::Stream::Audio.new(:reader => self,
+                                 :av_stream => av_stream)
       else
         Libav::Stream::Unsupported.new(:reader => self,
                                         :av_stream => av_stream)
